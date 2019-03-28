@@ -144,7 +144,7 @@ namespace gazebo
         }
 
         void UpdateAlgorithm();
-
+ 
     };
 
     // Register this plugin with the simulator
