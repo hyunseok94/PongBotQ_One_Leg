@@ -1,0 +1,5 @@
+<launch>
+ <include file="$(find gazebo_ros)/launch/empty_world.launch">
+  <arg name="world_name" value="$(find pongbot_leg2_v1)/worlds/pongbot_leg2_v1.world"/>
+ </include>
+</launch>
