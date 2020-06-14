@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>elmo_pkgs</name>
+  <version>0.0.0</version>
+  <description>The elmo_pkgs package</description>
+
+  <maintainer email="rc_lab@todo.todo">rc_lab</maintainer>
+
+  <license>TODO</license>
+
+  <build_depend>soem</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>message_generation</build_depend>
+
+
+  <exec_depend>soem</exec_depend>
+  <exec_depend>roscpp</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>message_runtime</exec_depend>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+
+  <export>
+
+  </export>
+</package>
