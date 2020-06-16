@@ -33,11 +33,10 @@
 // **********Eigen library*********//
 #include "Eigen/Dense"
 
-
-
 // **********Xenomai libraries*********//
 #include <alchemy/task.h>
 #include <alchemy/timer.h>
+#include <alchemy/mutex.h>
 
 //#include <stdlib.h>
 //#include <unistd.h>
@@ -47,7 +46,6 @@
 //#include <math.h>
 //#include <sys/socket.h>
 //#include <netinet/in.h>
-
 
 //#include <native/task.h>   //can't use
 //#include <native/timer.h>   //can't use
@@ -61,7 +59,7 @@
 #define EC_TIMEOUTMON 500
 
 #define NUM_OF_ELMO 3
-#define _USE_DC
+//#define _USE_DC
 
 #define R2D 180/PI
 #define D2R PI/180
@@ -84,6 +82,7 @@ int oloop, iloop, wkc_count;
 int expectedWKC;
 volatile int wkc;
 unsigned int cycle_ns = 1000000;
+int recv_fail_cnt = 0;
 
 // loop (main & thread)
 int main_run = 1;
@@ -178,20 +177,20 @@ double Thread_time = 0.0;
 RT_TASK RT_task1;
 RT_TASK RT_task2;
 RT_TASK RT_task3;
+RT_MUTEX mutex_desc; //mutex
+RTIME now, previous;
+
 
 //Thread// 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_t p_thread1;
-pthread_t p_thread2;
-int recv_fail_cnt = 0;
-
+//pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+//pthread_t p_thread1;
+//pthread_t p_thread2;
 
 
 //**********************************************//
 //*************** 2. Functions ****************//
 void motion_task(void* arg); // : Thread 1
 void print_task(void* arg); // : Thread 2
-void test_task(void *arg); // : Thread 3
 void catch_signal(int sig); // : Catch "Ctrl + C signal"
 void ServoOn(void); // : Servo ON
 void ServoOff(void); // : Servo Off
@@ -271,19 +270,19 @@ bool ecat_init(void) {
 #ifdef _USE_DC
             ec_configdc();
 #endif  
+
             printf("Slaves mapped, state to SAFE_OP.\n");
             ec_statecheck(0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE * 4);
 
 #ifdef _USE_DC
             printf("DC capable : %d\n", ec_configdc());
 #endif
+
             oloop = ec_slave[0].Obytes;
             if ((oloop == 0) && (ec_slave[0].Obits > 0)) oloop = 1;
             iloop = ec_slave[0].Ibytes;
             if ((iloop == 0) && (ec_slave[0].Ibits > 0)) iloop = 1;
-
             printf("segments : %d : %d %d %d %d\n", ec_group[0].nsegments, ec_group[0].IOsegment[0], ec_group[0].IOsegment[1], ec_group[0].IOsegment[2], ec_group[0].IOsegment[3]);
-
             printf("Request operational state for all slaves\n");
             expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
             printf("Calculated workcounter %d\n", expectedWKC);
@@ -339,6 +338,8 @@ int main(int argc, char *argv[]) {
 
     mlockall(MCL_CURRENT | MCL_FUTURE);
 
+    rt_mutex_create(&mutex_desc, "MyMutex");
+
     printf("ROS Setting ...\n");
     ros::init(argc, argv, "elmo_pkgs");
     ros::NodeHandle nh;
@@ -351,7 +352,7 @@ int main(int argc, char *argv[]) {
 
     printf("Init main ...\n");
     sleep(1);
-   
+
     // Display Adapter name
     printf("Use default adapter %s ...\n", ecat_ifname);
     sleep(1);
@@ -360,7 +361,7 @@ int main(int argc, char *argv[]) {
     printf("Initialize Prams...\n");
     initial_param_setting();
 
-    
+
     // Thread Setting Start
     printf("Create Thread ...\n");
     for (int i = 1; i < 4; ++i) {
@@ -374,12 +375,12 @@ int main(int argc, char *argv[]) {
     rt_task_start(&RT_task1, &motion_task, NULL);
     rt_task_start(&RT_task2, &print_task, NULL);
     // Thread Setting End
-    
-    
+
+
     while (ros::ok()) {
-        pthread_mutex_lock(&mutex);
+        rt_mutex_acquire(&mutex_desc, TM_INFINITE);
         // printf("main_running\n");
-        pthread_mutex_unlock(&mutex);
+        rt_mutex_release(&mutex_desc);
         ROS_MSG();
         ros::spinOnce();
     }
@@ -389,40 +390,73 @@ int main(int argc, char *argv[]) {
 
 void motion_task(void* arg) {
 
-    RTIME now, previous;
-    rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
-    previous = rt_timer_read();
-
-    //struct timespec begin, end;
-    //struct timespec tim;
-    //tim.tv_sec = 0;
-    //tim.tv_nsec = 1000000; //ns
-
-    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
     printf("Motion Thread Start \n");
 
     if (ecat_init() == false) {
         motion_run = 0;
     }
-    for (int i = 0; i < NUM_OF_ELMO; ++i) {
+    rt_task_sleep(1e6);
+
+#ifdef _USE_DC
+    long long toff;
+    long long cur_DCtime = 0, max_DCtime = 0;
+    unsigned long long cur_dc32 = 0, pre_dc32 = 0;
+    int32_t shift_time = 380000; //dc event shifted compared to master reference clock
+    long long diff_dc32;
+
+    for (int i = 0; i < NUM_OF_ELMO; ++i)
         ec_dcsync0(1 + i, TRUE, cycle_ns, 0); // SYNC0,1 on slave 1
-    }
+
+    RTIME cycletime = cycle_ns, cur_time = 0;
+    RTIME cur_cycle_cnt = 0, cycle_time;
+    RTIME remain_time, dc_remain_time;
+    toff = 0;
+    RTIME rt_ts;
 
     ec_send_processdata();
+    cur_time = rt_timer_read(); //get current master time
+    cur_cycle_cnt = cur_time / cycle_ns; //calcualte number of cycles has passed
+    cycle_time = cur_cycle_cnt * cycle_ns;
+    remain_time = cur_time % cycle_ns; //remain time to next cycle, test only
+    rt_printf("cycle_cnt=%lld\n", cur_cycle_cnt);
+    rt_printf("remain_time=%lld\n", remain_time);
+    wkc = ec_receive_processdata(EC_TIMEOUTRET); //get reference DC time
+    cur_dc32 = (uint32_t) (ec_DCtime & 0xffffffff); //only consider first 32-bit
+    dc_remain_time = cur_dc32 % cycletime; //remain time to next cycle of REF clock, update to master
+    rt_ts = cycle_time + dc_remain_time; //update master time to REF clock
+    rt_printf("dc remain_time=%lld\n", dc_remain_time);
+    rt_task_sleep_until(rt_ts);
+
+#else  //nonDC
+    ec_send_processdata();
+    rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
+#endif
 
     while (motion_run) {
-        rt_task_wait_period(NULL);
         now = rt_timer_read();
-       
-        //clock_gettime(CLOCK_MONOTONIC, &begin); //Time measure
-        ///pthread_mutex_lock(&mutex);
+#ifdef _USE_DC     
+        rt_ts += (RTIME) (cycle_ns + toff);
+        rt_task_sleep_until(rt_ts);
+#else  
+        rt_task_wait_period(NULL);
+#endif
 
         ec_send_processdata();
         wkc = ec_receive_processdata(EC_TIMEOUTRET);
-        if (wkc < 3 * (NUM_OF_ELMO)) {
+        if (wkc < 3 * (NUM_OF_ELMO))
             recv_fail_cnt++;
-        }
+
+#ifdef _USE_DC    
+        cur_dc32 = (uint32_t) (ec_DCtime & 0xffffffff); //use 32-bit only
+        if (cur_dc32 > pre_dc32) //normal case
+            diff_dc32 = cur_dc32 - pre_dc32;
+        else //32-bit data overflow
+            diff_dc32 = (0xffffffff - pre_dc32) + cur_dc32;
+        pre_dc32 = cur_dc32;
+        cur_DCtime += diff_dc32;
+        toff = dc_pi_sync(cur_DCtime, cycletime, shift_time);
+        if (cur_DCtime > max_DCtime) max_DCtime = cur_DCtime;
+#endif                   
 
         if (inOP == TRUE) {
             if (!sys_ready) {
@@ -433,16 +467,17 @@ void motion_task(void* arg) {
                     stick++;
             }
         }
+
         // realtime action...
         if (sys_ready) {
+            rt_mutex_acquire(&mutex_desc, TM_INFINITE);
             EncoderRead();
             Test_Pos_Traj_HS();
             ComputeTorqueControl_HS();
             jointController();
-            //            DataSave();
+            //DataSave();
         } else {
             ServoOn();
-            //printf("0\n");
             if (ServoState == (1 << NUM_OF_ELMO) - 1) //all servos are in ON state
             {
                 if (servo_ready == 0) {
@@ -456,29 +491,23 @@ void motion_task(void* arg) {
                 sys_ready = 1;
             }
         }
-        //pthread_mutex_unlock(&mutex);
-        //pthread_testcancel(); //cancel point
-        //nanosleep(&tim, NULL);
-
-        //clock_gettime(CLOCK_MONOTONIC, &end); //Time measure
-        //Thread_time = (end.tv_sec - begin.tv_sec)+(end.tv_nsec - begin.tv_nsec) / 1000000000.0;
 
         DataSave();
+        rt_mutex_release(&mutex_desc);
         previous = now;
     }
 }
 
 void print_task(void* arg) {
 
-    RTIME now, previous;
     rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
-    previous = rt_timer_read();
 
     rt_printf("Print Thread Start \n");
 
     while (print_run) {
         rt_task_wait_period(NULL);
-        now = rt_timer_read();
+        //now = rt_timer_read();
+        rt_mutex_acquire(&mutex_desc, TM_INFINITE);
 
         if (inOP == TRUE) {
             if (!sys_ready) {
@@ -493,7 +522,7 @@ void print_task(void* arg) {
                 rt_printf("flag=%d\n", Control_mode_flag);
                 rt_printf("Controlmode=%d\n", Controlmode_HS);
                 rt_printf("_______________________________\n");
-                
+
                 for (int i = 0; i < NUM_OF_ELMO; ++i) {
                     //ELMO Status
                     rt_printf("ELMO_Drive#%i\n", i + 1);
@@ -512,7 +541,7 @@ void print_task(void* arg) {
                 //                printf("actual_y=%3f[m]\n", actual_EP_pos_local_HS(1));
                 //                printf("actual_z=%3f[m]\n", actual_EP_pos_local_HS(2));
                 //                printf("_______________________________________
-                
+
                 rt_printf("Thread_time : %ld.%06ld ms\n", (long) (now - previous) / 1000000, (long) (now - previous) % 1000000);
                 // printf("Thread_time=%6f [s]\n", Thread_time);____________\n");
                 //                                printf("init_x=%3f[m]\n", init_EP_pos_HS(0));
@@ -530,10 +559,7 @@ void print_task(void* arg) {
             }
 
         }
-        //pthread_mutex_unlock(&mutex);
-        //pthread_testcancel(); //cancel point
-        //nanosleep(&tim, NULL);
-        previous = now;
+        rt_mutex_release(&mutex_desc);
     }
 }
 
@@ -542,8 +568,9 @@ void catch_signal(int sig) {
     printf("Program END...\n");
     rt_task_delete(&RT_task1);
     rt_task_delete(&RT_task2);
+    rt_mutex_delete(&mutex_desc);
     ros::shutdown();
-    
+
     sleep(2); //after 2[s] Program end
     exit(1);
 }
@@ -742,11 +769,9 @@ void ROS_MSG(void) {
 
 VectorXd FK_HS(VectorXd joint_pos) {
     VectorXd EP_pos_HS(3);
-    //const double L1 = 0.105;
     const double L1 = 0.1045;
     const double L2 = 0.305;
     const double L3 = 0.309;
-    //const double L3 = 0.294;
 
     static double q1 = 0;
     static double q2 = 0;
@@ -756,7 +781,7 @@ VectorXd FK_HS(VectorXd joint_pos) {
     q1 = joint_pos[0];
     q2 = joint_pos[1];
     q3 = joint_pos[2];
-    //printf("q1=%3f,q2=%3f,q3=%3f\n", q1*R2D, q2*R2D, q3 * R2D);
+
     EP_pos_HS[0] = -L2 * sin(q2) - L3 * (cos(q2) * sin(q3) + cos(q3) * sin(q2));
     EP_pos_HS[1] = L1 * cos(q1) + L2 * cos(q2) * sin(q1) - L3 * (sin(q1) * sin(q2) * sin(q3) - cos(q2) * cos(q3) * sin(q1));
     EP_pos_HS[2] = L1 * sin(q1) - L2 * cos(q1) * cos(q2) - L3 * (cos(q1) * cos(q2) * cos(q3) - cos(q1) * sin(q2) * sin(q3));
@@ -863,22 +888,5 @@ void FileSave(void) {
 void Cal_Fc_HS(void) {
     for (int i = 0; i < NUM_OF_ELMO; ++i) {
         Cart_Controller_HS[i] = kp_EP_HS[i] * (actual_EP_pos_local_HS[i] - target_EP_pos_HS[i]) + kd_EP_HS[i] * (actual_EP_vel_local_HS[i] - target_EP_vel_HS[i]);
-    }
-}
-
-void test_task(void *arg) {
-    RTIME now, previous;
-
-    rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
-    previous = rt_timer_read();
-
-    while (main_run) {
-        rt_task_wait_period(NULL);
-        now = rt_timer_read();
-
-        rt_printf("Time since last turn(TEST) : %ld.%06ld ms\n",
-                (long) (now - previous) / 1000000,
-                (long) (now - previous) % 1000000);
-        previous = now;
     }
 }

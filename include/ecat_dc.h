@@ -16,6 +16,12 @@
 #include <stdint.h>
 
 //new style, PI compensation
+#ifdef __cplusplus
+extern "C"{
+#endif
 long long dc_pi_sync(long long  reftime, long long  cycletime, int32_t shift_time);
+#ifdef __cplusplus
+}
+#endif
 #endif //_ECAT_DC_H_
 
