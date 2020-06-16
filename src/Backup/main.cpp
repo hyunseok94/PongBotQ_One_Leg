@@ -91,6 +91,12 @@ int motion_run = 1;
 int print_run = 1;
 int ros_run = 1;
 
+//Thread// 
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_t p_thread1;
+pthread_t p_thread2;
+int recv_fail_cnt = 0;
+
 // Servo
 int ServoState = 0;
 int servo_ready = 0;
@@ -176,22 +182,13 @@ double Thread_time = 0.0;
 
 //Xenomai
 RT_TASK RT_task1;
-RT_TASK RT_task2;
-RT_TASK RT_task3;
-
-//Thread// 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_t p_thread1;
-pthread_t p_thread2;
-int recv_fail_cnt = 0;
-
-
+void test_task(void *arg);
 
 //**********************************************//
 //*************** 2. Functions ****************//
-void motion_task(void* arg); // : Thread 1
-void print_task(void* arg); // : Thread 2
-void test_task(void *arg); // : Thread 3
+void* motion_task(void* arg); // : Thread 1
+void* print_task(void* arg); // : Thread 2
+void* ros_task(void* arg); // : Thread 3
 void catch_signal(int sig); // : Catch "Ctrl + C signal"
 void ServoOn(void); // : Servo ON
 void ServoOff(void); // : Servo Off
@@ -334,16 +331,17 @@ bool ecat_init(void) {
 
 int main(int argc, char *argv[]) {
 
+
     signal(SIGTERM, catch_signal);
     signal(SIGINT, catch_signal);
 
-    mlockall(MCL_CURRENT | MCL_FUTURE);
-
+    mlockall(MCL_CURRENT|MCL_FUTURE);
+    
     printf("ROS Setting ...\n");
     ros::init(argc, argv, "elmo_pkgs");
     ros::NodeHandle nh;
-    ros::Rate loop_rate(1000);
-    //ros::Rate loop_rate(100);
+    //ros::Rate loop_rate(1000);
+    ros::Rate loop_rate(100);
     S_Mode = nh.subscribe("Mode", 1, Callback1);
     P_data = nh.advertise<std_msgs::Float64MultiArray>("ROS_DATA", 1);
     m_data.data.resize(10);
@@ -351,35 +349,31 @@ int main(int argc, char *argv[]) {
 
     printf("Init main ...\n");
     sleep(1);
-   
-    // Display Adapter name
+
     printf("Use default adapter %s ...\n", ecat_ifname);
     sleep(1);
 
-    // Initial Setting
     printf("Initialize Prams...\n");
     initial_param_setting();
 
-    
-    // Thread Setting Start
     printf("Create Thread ...\n");
     for (int i = 1; i < 4; ++i) {
         printf("%d...\n", i);
         sleep(1);
     }
-
-    rt_task_create(&RT_task1, "Motion_task", 0, 99, 0);
-    rt_task_create(&RT_task2, "Print_task", 0, 70, 0);
-
-    rt_task_start(&RT_task1, &motion_task, NULL);
-    rt_task_start(&RT_task2, &print_task, NULL);
-    // Thread Setting End
     
+    rt_task_create(&RT_task1, "Test_task", 0, 99, 0);
+    rt_task_start(&RT_task1, &test_task, NULL);
     
+    pthread_create(&p_thread1, NULL, motion_task, NULL);
+    pthread_create(&p_thread2, NULL, print_task, NULL);
+   
+    //while (main_run) {
     while (ros::ok()) {
         pthread_mutex_lock(&mutex);
         // printf("main_running\n");
         pthread_mutex_unlock(&mutex);
+        //usleep(1000); //cycle = 1.0 [s]
         ROS_MSG();
         ros::spinOnce();
     }
@@ -387,16 +381,13 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-void motion_task(void* arg) {
+void* motion_task(void* arg) {
+    //Thread Time Measure
+    struct timespec begin, end;
+    struct timespec tim;
 
-    RTIME now, previous;
-    rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
-    previous = rt_timer_read();
-
-    //struct timespec begin, end;
-    //struct timespec tim;
-    //tim.tv_sec = 0;
-    //tim.tv_nsec = 1000000; //ns
+    tim.tv_sec = 0;
+    tim.tv_nsec = 1000000; //ns
 
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
@@ -412,11 +403,9 @@ void motion_task(void* arg) {
     ec_send_processdata();
 
     while (motion_run) {
-        rt_task_wait_period(NULL);
-        now = rt_timer_read();
-       
-        //clock_gettime(CLOCK_MONOTONIC, &begin); //Time measure
-        ///pthread_mutex_lock(&mutex);
+
+        clock_gettime(CLOCK_MONOTONIC, &begin); //Time measure
+        pthread_mutex_lock(&mutex);
 
         ec_send_processdata();
         wkc = ec_receive_processdata(EC_TIMEOUTRET);
@@ -456,65 +445,67 @@ void motion_task(void* arg) {
                 sys_ready = 1;
             }
         }
-        //pthread_mutex_unlock(&mutex);
-        //pthread_testcancel(); //cancel point
-        //nanosleep(&tim, NULL);
+        pthread_mutex_unlock(&mutex);
+        pthread_testcancel(); //cancel point
+        //usleep(1000); //1 ms cycle
 
-        //clock_gettime(CLOCK_MONOTONIC, &end); //Time measure
-        //Thread_time = (end.tv_sec - begin.tv_sec)+(end.tv_nsec - begin.tv_nsec) / 1000000000.0;
+        //nanosleep((const struct timespec[]){{0,10000000L}},NULL);
+        nanosleep(&tim, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &end); //Time measure
+        Thread_time = (end.tv_sec - begin.tv_sec)+(end.tv_nsec - begin.tv_nsec) / 1000000000.0;
 
         DataSave();
-        previous = now;
     }
+    return 0;
 }
 
-void print_task(void* arg) {
+void* print_task(void* arg) {
 
-    RTIME now, previous;
-    rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
-    previous = rt_timer_read();
+    struct timespec tim;
 
-    rt_printf("Print Thread Start \n");
+    tim.tv_sec = 0;
+    tim.tv_nsec = 1000000; //ns
+
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+    printf("Print Thread Start \n");
 
     while (print_run) {
-        rt_task_wait_period(NULL);
-        now = rt_timer_read();
+        pthread_mutex_lock(&mutex);
 
         if (inOP == TRUE) {
             if (!sys_ready) {
                 if (stick == 0)
-                    rt_printf("waiting for system ready...\n");
+                    printf("waiting for system ready...\n");
                 if (stick % 10 == 0)
                     // rt_printf("%i\n", stick / 10);
                     stick++;
             } else {
-                rt_printf("tmp_flag=%d\n", tmp_Control_mode_flag);
-                rt_printf("cnt=%d\n", cnt_Control_mode);
-                rt_printf("flag=%d\n", Control_mode_flag);
-                rt_printf("Controlmode=%d\n", Controlmode_HS);
-                rt_printf("_______________________________\n");
-                
+//                printf("tmp_flag=%d\n", tmp_Control_mode_flag);
+//                printf("cnt=%d\n", cnt_Control_mode);
+//                printf("flag=%d\n", Control_mode_flag);
+//                printf("Controlmode=%d\n", Controlmode_HS);
+//                printf("_______________________________\n");
                 for (int i = 0; i < NUM_OF_ELMO; ++i) {
-                    //ELMO Status
-                    rt_printf("ELMO_Drive#%i\n", i + 1);
-                    rt_printf("Status word = 0x%X\n", ELMO_drive_pt[i].ptInParam->StatusWord);
-                    rt_printf("actual_q(degree) = %3f\n", actual_joint_pos_HS[i] * R2D);
-                    rt_printf("ABS_actual_q(degree) = %3f\n", ABS_actual_joint_pos_HS[i] * R2D);
-                    rt_printf("actual_q_dot=%3f\n", actual_joint_vel_HS[i]);
-                    rt_printf("init_q(degree)=%3f\n", init_joint_pos_HS[i] * R2D);
-                    rt_printf("goal_q(degree)=%3f\n", goal_joint_pos_HS[i] * R2D);
-                    rt_printf("target_q(degree)=%3f\n", target_joint_pos_HS[i] * R2D);
-                    rt_printf("CTC_Torque=%3f\n", CTC_Torque[i]);
-                    rt_printf("target_vel=%3f\n", target_joint_vel_HS[i]);
-                    rt_printf("___________________________________________________\n");
+                    //printf("Print Thread Running \n");
+                    // ELMO Status
+                   // printf("ELMO_Drive#%i\n", i + 1);
+                    //printf("Status word = 0x%X\n", ELMO_drive_pt[i].ptInParam->StatusWord);
+                    // printf("actual_q(degree) = %3f\n", actual_joint_pos_HS[i] * R2D);
+                    //                    printf("ABS_actual_q(degree) = %3f\n", ABS_actual_joint_pos_HS[i] * R2D);
+                    // printf("actual_q_dot=%3f\n", actual_joint_vel_HS[i]);
+                    // printf("init_q(degree)=%3f\n", init_joint_pos_HS[i] * R2D);
+                    //p/rintf("goal_q(degree)=%3f\n", goal_joint_pos_HS[i] * R2D);
+                    //printf("target_q(degree)=%3f\n", target_joint_pos_HS[i] * R2D);
+                    // printf("CTC_Torque=%3f\n", CTC_Torque[i]);
+                    // printf("target_vel=%3f\n", target_joint_vel_HS[i]);
+                    //printf("___________________________________________________\n");
                 }
+               // printf("Thread_time=%6f [s]\n", Thread_time);
                 //                printf("actual_x=%3f[m]\n", actual_EP_pos_local_HS(0));
                 //                printf("actual_y=%3f[m]\n", actual_EP_pos_local_HS(1));
                 //                printf("actual_z=%3f[m]\n", actual_EP_pos_local_HS(2));
-                //                printf("_______________________________________
-                
-                rt_printf("Thread_time : %ld.%06ld ms\n", (long) (now - previous) / 1000000, (long) (now - previous) % 1000000);
-                // printf("Thread_time=%6f [s]\n", Thread_time);____________\n");
+                //                printf("___________________________________________________\n");
                 //                                printf("init_x=%3f[m]\n", init_EP_pos_HS(0));
                 //                                printf("init_y=%3f[m]\n", init_EP_pos_HS(1));
                 //                                printf("init_z=%3f[m]\n", init_EP_pos_HS(2));
@@ -526,24 +517,48 @@ void print_task(void* arg) {
                 //                printf("target_x=%3f[m]\n", target_EP_pos_HS(0));
                 //                printf("target_y=%3f[m]\n", target_EP_pos_HS(1));
                 //                printf("target_z=%3f[m]\n", target_EP_pos_HS(2));
-                rt_printf("-----------------------------------------------------------------------\n");
+                printf("-----------------------------------------------------------------------\n");
             }
 
         }
-        //pthread_mutex_unlock(&mutex);
-        //pthread_testcancel(); //cancel point
-        //nanosleep(&tim, NULL);
-        previous = now;
+        pthread_mutex_unlock(&mutex);
+        pthread_testcancel(); //cancel point
+        //usleep(1000); //1ms cycle
+        nanosleep(&tim, NULL);
     }
+    return 0;
 }
+
+//void* ros_task(void* arg) {
+//
+//    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+//    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+//    printf("Print ROS Start \n");
+//
+//    ros::NodeHandle nh;
+//
+//    ros::Rate loop_rate(1000);
+//
+//    while (ros::ok()) {
+//        pthread_mutex_lock(&mutex);
+//        ROS_INFO("ROS!");
+//        std::cout<<"ROS2!"<<std::endl;
+//        pthread_mutex_unlock(&mutex);
+//        ros::spin();
+//        pthread_testcancel(); //cancel point
+//        loop_rate.sleep();
+//    }
+//}
 
 void catch_signal(int sig) {
     FileSave();
     printf("Program END...\n");
-    rt_task_delete(&RT_task1);
-    rt_task_delete(&RT_task2);
+    pthread_cancel(p_thread1);
+    pthread_cancel(p_thread2);
     ros::shutdown();
-    
+    rt_task_delete(&RT_task1);
+    pthread_mutex_destroy(&mutex);
+
     sleep(2); //after 2[s] Program end
     exit(1);
 }
@@ -866,19 +881,19 @@ void Cal_Fc_HS(void) {
     }
 }
 
-void test_task(void *arg) {
+void test_task(void *arg){
     RTIME now, previous;
-
+        
     rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
-    previous = rt_timer_read();
-
-    while (main_run) {
+    previous=rt_timer_read();
+    
+    while(main_run){
         rt_task_wait_period(NULL);
-        now = rt_timer_read();
-
-        rt_printf("Time since last turn(TEST) : %ld.%06ld ms\n",
-                (long) (now - previous) / 1000000,
-                (long) (now - previous) % 1000000);
-        previous = now;
+        now=rt_timer_read();
+        
+        rt_printf("Time since last turn : %ld.%06ld ms\n",
+                (long)(now-previous)/1000000,
+                (long)(now-previous)%1000000);
+        previous=now;
     }
 }
