@@ -33,6 +33,13 @@
 // **********Eigen library*********//
 #include "Eigen/Dense"
 
+// **********RBDL library*********//
+#include <rbdl/rbdl.h>
+#include <rbdl/addons/urdfreader/urdfreader.h>
+
+// **********CRobot library*********//
+#include "CRobot.h"
+
 // **********Xenomai libraries*********//
 #include <alchemy/task.h>
 #include <alchemy/timer.h>
@@ -59,15 +66,16 @@
 #define EC_TIMEOUTMON 500
 
 #define NUM_OF_ELMO 3
-//#define _USE_DC
+#define _USE_DC
 
-#define R2D 180/PI
-#define D2R PI/180
+//#define R2D 180/PI
+//#define D2R PI/180
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using Eigen::Vector3d;
-
+using namespace RigidBodyDynamics;
+using namespace RigidBodyDynamics::Math;
 //*************** 1. Variables ****************/
 // Ethercat
 char ecat_ifname[32] = "eth0";
@@ -180,6 +188,14 @@ RT_TASK RT_task3;
 RT_MUTEX mutex_desc; //mutex
 RTIME now, previous;
 
+clock_t start_point, end_point;
+
+double del_time = 0.0;
+double del_time2 = 0.0;
+
+//RBDL
+int version_test;
+Model* pongbot_q_model = new Model();
 
 //Thread// 
 //pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -218,6 +234,17 @@ void FileSave(void);
 // ROS function
 void Callback1(const std_msgs::Int32 &msg);
 void ROS_MSG(void);
+
+//RBDL
+//void setRobotModel(Model* getModel);
+//RigidBodyDynamics::Model* m_pModel; //* URDF Model
+//RigidBodyDynamics::Math::VectorNd RobotState;
+//RigidBodyDynamics::Math::VectorNd RobotStatedot;
+//RigidBodyDynamics::Math::VectorNd RobotState2dot;
+//RigidBodyDynamics::Math::VectorNd BasePosOri;
+//RigidBodyDynamics::Math::VectorNd BaseVel;
+//RigidBodyDynamics::Math::VectorNd JointAngle;
+//RigidBodyDynamics::Math::VectorNd JointVel;
 
 bool ecat_init(void) {
 
@@ -398,14 +425,16 @@ void motion_task(void* arg) {
     rt_task_sleep(1e6);
 
 #ifdef _USE_DC
+    //for dc computation
     long long toff;
     long long cur_DCtime = 0, max_DCtime = 0;
     unsigned long long cur_dc32 = 0, pre_dc32 = 0;
     int32_t shift_time = 380000; //dc event shifted compared to master reference clock
     long long diff_dc32;
 
-    for (int i = 0; i < NUM_OF_ELMO; ++i)
+    for (int i = 0; i < NUM_OF_ELMO; ++i) {
         ec_dcsync0(1 + i, TRUE, cycle_ns, 0); // SYNC0,1 on slave 1
+    }
 
     RTIME cycletime = cycle_ns, cur_time = 0;
     RTIME cur_cycle_cnt = 0, cycle_time;
@@ -413,16 +442,22 @@ void motion_task(void* arg) {
     toff = 0;
     RTIME rt_ts;
 
+    //get DC time for first time
     ec_send_processdata();
+
     cur_time = rt_timer_read(); //get current master time
     cur_cycle_cnt = cur_time / cycle_ns; //calcualte number of cycles has passed
     cycle_time = cur_cycle_cnt * cycle_ns;
     remain_time = cur_time % cycle_ns; //remain time to next cycle, test only
+
     rt_printf("cycle_cnt=%lld\n", cur_cycle_cnt);
     rt_printf("remain_time=%lld\n", remain_time);
+
     wkc = ec_receive_processdata(EC_TIMEOUTRET); //get reference DC time
     cur_dc32 = (uint32_t) (ec_DCtime & 0xffffffff); //only consider first 32-bit
     dc_remain_time = cur_dc32 % cycletime; //remain time to next cycle of REF clock, update to master
+
+    //remain time to next cycle of REF clock, update to master
     rt_ts = cycle_time + dc_remain_time; //update master time to REF clock
     rt_printf("dc remain_time=%lld\n", dc_remain_time);
     rt_task_sleep_until(rt_ts);
@@ -433,7 +468,7 @@ void motion_task(void* arg) {
 #endif
 
     while (motion_run) {
-        now = rt_timer_read();
+        
 #ifdef _USE_DC     
         rt_ts += (RTIME) (cycle_ns + toff);
         rt_task_sleep_until(rt_ts);
@@ -443,40 +478,42 @@ void motion_task(void* arg) {
 
         ec_send_processdata();
         wkc = ec_receive_processdata(EC_TIMEOUTRET);
-        if (wkc < 3 * (NUM_OF_ELMO))
+        if (wkc < 3 * (NUM_OF_ELMO)) {
             recv_fail_cnt++;
+        }
 
 #ifdef _USE_DC    
         cur_dc32 = (uint32_t) (ec_DCtime & 0xffffffff); //use 32-bit only
-        if (cur_dc32 > pre_dc32) //normal case
+        if (cur_dc32 > pre_dc32) { //normal case
             diff_dc32 = cur_dc32 - pre_dc32;
-        else //32-bit data overflow
+        } else { //32-bit data overflow
             diff_dc32 = (0xffffffff - pre_dc32) + cur_dc32;
+        }
         pre_dc32 = cur_dc32;
         cur_DCtime += diff_dc32;
         toff = dc_pi_sync(cur_DCtime, cycletime, shift_time);
-        if (cur_DCtime > max_DCtime) max_DCtime = cur_DCtime;
+        if (cur_DCtime > max_DCtime) {
+            max_DCtime = cur_DCtime;
+        }
 #endif                   
-
-        if (inOP == TRUE) {
-            if (!sys_ready) {
-                if (stick == 0)
-                    printf("waiting for system ready...\n");
-                if (stick % 10 == 0)
-                    // printf("%l\n", stick / 10);
-                    stick++;
-            }
+        //        if (inOP == TRUE) {
+        //            if (!sys_ready) {
+        //                if (stick == 0)
+        //                    printf("waiting for system ready...\n");
+        //                if (stick % 10 == 0)
+        //                    // printf("%l\n", stick / 10);
+        //                    stick++;
+        //            }
+        //        }
+        previous = now;
+        start_point = clock();
+        ready_cnt++;
+        if (ready_cnt >= 1000) {
+            ready_cnt = 6000;
+            sys_ready = 1;
         }
 
-        // realtime action...
-        if (sys_ready) {
-            rt_mutex_acquire(&mutex_desc, TM_INFINITE);
-            EncoderRead();
-            Test_Pos_Traj_HS();
-            ComputeTorqueControl_HS();
-            jointController();
-            //DataSave();
-        } else {
+        if (sys_ready == 0) {
             ServoOn();
             if (ServoState == (1 << NUM_OF_ELMO) - 1) //all servos are in ON state
             {
@@ -490,12 +527,54 @@ void motion_task(void* arg) {
             if (ready_cnt >= 5000) {
                 sys_ready = 1;
             }
+        } else { // realtime action...
+            rt_mutex_acquire(&mutex_desc, TM_INFINITE);
+            EncoderRead();
+            Test_Pos_Traj_HS();
+            ComputeTorqueControl_HS();
+            jointController();
+            //DataSave();
         }
 
         DataSave();
         rt_mutex_release(&mutex_desc);
-        previous = now;
+        
+        now = rt_timer_read();
+        end_point = clock();
+        del_time = (double)(now - previous)/1000000;
+        del_time2 = (double)(rt_timer_read() - previous)/1000000;
+        
+        
     }
+    
+    rt_task_sleep(cycle_ns);
+#ifdef _USE_DC
+    for (int i = 0; i < NUM_OF_ELMO; ++i)
+        ec_dcsync0(i + 1, FALSE, 0, 0); // SYNC0,1 on slave 1
+#endif 
+    for (int i = 0; i < NUM_OF_ELMO; ++i) {
+        ELMO_drive_pt[i].ptOutParam->ControlWord = 0; //Servo OFF (Disable voltage, transition#9)
+    }
+    ec_send_processdata();
+    wkc = ec_receive_processdata(EC_TIMEOUTRET);
+
+    rt_task_sleep(cycle_ns);
+
+    rt_printf("End simple test, close socket\n");
+    /* stop SOEM, close socket */
+    printf("Request safe operational state for all slaves\n");
+    ec_slave[0].state = EC_STATE_SAFE_OP;
+    /* request SAFE_OP state for all slaves */
+    ec_writestate(0);
+    /* wait for all slaves to reach state */
+    ec_statecheck(0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE);
+    ec_slave[0].state = EC_STATE_PRE_OP;
+    /* request SAFE_OP state for all slaves */
+    ec_writestate(0);
+    /* wait for all slaves to reach state */
+    ec_statecheck(0, EC_STATE_PRE_OP, EC_TIMEOUTSTATE);
+
+    ec_close();
 }
 
 void print_task(void* arg) {
@@ -542,7 +621,10 @@ void print_task(void* arg) {
                 //                printf("actual_z=%3f[m]\n", actual_EP_pos_local_HS(2));
                 //                printf("_______________________________________
 
-                rt_printf("Thread_time : %ld.%06ld ms\n", (long) (now - previous) / 1000000, (long) (now - previous) % 1000000);
+//                rt_printf("Thread_time : %ld.%06ld ms\n", (long) (now - previous) / 1000000, (long) (now - previous) % 1000000);
+                rt_printf("Thread_time1 : %f ms........\n", del_time);
+                rt_printf("Thread_time2 : %f ms........\n", del_time2);
+                rt_printf("Thread_time3 : %f ms........\n", (double)(end_point - start_point)/CLOCKS_PER_SEC*1000.0);  //CLOCKS_PER_SEC=1000000
                 // printf("Thread_time=%6f [s]\n", Thread_time);____________\n");
                 //                                printf("init_x=%3f[m]\n", init_EP_pos_HS(0));
                 //                                printf("init_y=%3f[m]\n", init_EP_pos_HS(1));
@@ -662,7 +744,12 @@ INT16 Cur2Tor(double targetCur, double _ratedCur) {
 }
 
 void initial_param_setting(void) {
-
+    rbdl_check_api_version(RBDL_API_VERSION);
+    version_test=rbdl_get_api_version();
+    printf("rbdl api version = %d\n", version_test);
+    Addons::URDFReadFromFile("/home/rclab_catkin_ws/src/PongBotQ_One_Leg/model/PONGBOT_ONE_LEG/urdf/PONGBOT_ONE_LEG.urdf",pongbot_q_model,true,true);
+    //setRobotModel(pongbot_q_model);
+    
     kp_joint_HS << 10000.0, 10000.0, 10000.0;
     kd_joint_HS << 500.0, 500.0, 500.0;
     kp_EP_HS << 20000, 20000, 10000;
@@ -890,3 +977,8 @@ void Cal_Fc_HS(void) {
         Cart_Controller_HS[i] = kp_EP_HS[i] * (actual_EP_pos_local_HS[i] - target_EP_pos_HS[i]) + kd_EP_HS[i] * (actual_EP_vel_local_HS[i] - target_EP_vel_HS[i]);
     }
 }
+
+//void setRobotModel(Model* getModel){
+//    m_pModel=getModel;
+//    m_pModel->gravity=Vector3d(0.,0.,-9.81);
+//}

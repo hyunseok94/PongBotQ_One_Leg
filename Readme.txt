@@ -17,6 +17,7 @@
 ##############################################################################
 
 < Solution for Error(error while loading shared libraries: libalchemy.so.0) >
+ ldd ./<file_name>           : Confirm the header file in the list. (Run the codes )
 
  cd /etc/ld.so.conf.d        : Move to "/etc/ld.so.conf.d" directory.
  sudo gedit tspi.conf        : Make "tspi.conf" file

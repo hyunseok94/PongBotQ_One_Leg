@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(elmo_pkgs)
 
+LIST(APPEND CMAKE_MODULE_PATH
+${PROJECT_SOURCE_DIR})
+
+find_package(RBDL REQUIRED)
+find_package(Eigen3 3.0.0 REQUIRED)
+
 # appended to the catkin_variables(catkin_INCLUDE_DIRS contains the include paths for this lists)
 find_package(catkin REQUIRED COMPONENTS 
  roscpp
@@ -8,6 +14,8 @@ find_package(catkin REQUIRED COMPONENTS
  soem
  message_generation
 )
+
+
 
 catkin_package(
   INCLUDE_DIRS include   # "include" folder 
@@ -24,7 +32,10 @@ catkin_package(
 include_directories(
  include
  ${catkin_INCLUDE_DIRS}
+ ${RBDL_INCLUDE_DIR}
+ ${EIGEN3_INCLUDE_DIR}
 )
+
 
 # Xenomai setting
 execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --cflags OUTPUT_VARIABLE XENO_CFLAGS)
@@ -39,7 +50,10 @@ SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--wrap=main -Wl,--no-a
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # To specify an executable target that must be buillt.
-add_executable(elmo_pkgs.exe src/main.cpp src/servo.c src/ecat_dc.c)
+add_executable(elmo_pkgs.exe src/main.cpp src/servo.c src/ecat_dc.c src/CRobot.cpp)
 
 # To specify which libraries an executable target links against.
-target_link_libraries(elmo_pkgs.exe ${catkin_LIBRARIES})
+target_link_libraries(elmo_pkgs.exe ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
+
+
+
