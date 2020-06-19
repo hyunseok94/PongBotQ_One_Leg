@@ -14,6 +14,7 @@
 (3) rosrun elmo_pkgs elmo_pkgs.exe
 
 
+ (0) cs && cd PongBotQ_One_Leg/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip elmo_pkgs.exe
 ##############################################################################
 
 < Solution for Error(error while loading shared libraries: libalchemy.so.0) >

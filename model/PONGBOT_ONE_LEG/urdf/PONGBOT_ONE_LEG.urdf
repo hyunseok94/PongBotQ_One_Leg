@@ -7,7 +7,7 @@
         xyz="-0.048 0.063 -0.002"
         rpy="0 0 0" />
       <mass
-        value="3.292" />
+        value="3.6" />
       <inertia
         ixx="0.017"
         ixy="-0.005"
@@ -47,7 +47,7 @@
         xyz="0.001 0.003 0"
         rpy="0 0 0" />
       <mass
-        value="1.53" />
+        value="2.35" />
       <inertia
         ixx="0.002"
         ixy="0"
@@ -100,7 +100,7 @@
         xyz="0 -0.01 -0.037"
         rpy="0 0 0" />
       <mass
-        value="3.306" />
+        value="3.15" />
       <inertia
         ixx="0.024"
         ixy="0"
@@ -153,7 +153,7 @@
         xyz="-0.001 -0.006 -0.081"
         rpy="0 0 0" />
       <mass
-        value="0.828" />
+        value="0.35" />
       <inertia
         ixx="0.01"
         ixy="0"
@@ -241,7 +241,7 @@
   </link>
   <joint
     name="TIP_JOINT"
-    type="continuous">
+    type="fixed">
     <origin
       xyz="-0.013819 0 -0.29282"
       rpy="0 0 0" />
@@ -250,6 +250,6 @@
     <child
       link="TIP" />
     <axis
-      xyz="0.70711 0 0.70711" />
+      xyz="0 0 0" />
   </joint>
 </robot>

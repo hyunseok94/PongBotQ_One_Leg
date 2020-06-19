@@ -3,6 +3,8 @@
 
 #include "rbdl/rbdl.h"
 #include <rbdl/addons/urdfreader/urdfreader.h>
+#include "servo_def.h"
+#include "main.h"
 
 //#define PI  3.14159265359
 //#define PI2 6.28318530718
@@ -11,17 +13,25 @@
 //#define R2D 57.295779513
 //#define D2R 0.0174532925
 
+#define AXIS_X     0
+#define AXIS_Y     1
+#define AXIS_Z     2
+#define AXIS_Roll  3
+#define AXIS_Pitch 4
+#define AXIS_Yaw   5
+
+using Eigen::VectorXd;
 using namespace std;
 using namespace RigidBodyDynamics;
 using namespace RigidBodyDynamics::Math;
 
 typedef enum {
     CTRLMODE_NONE = 0,
-    CTRLMODE_INITIALIZE,
-    CTRLMODE_WALK_READY_HS,
-    CTRLMODE_WALK_HS,
-    CTRLMODE_POSTURE_GENERATION_HS,
-    CTRLMODE_TEST_HS
+    CTRLMODE_INITIALIZE, //1
+    CTRLMODE_WALK_READY_HS, //2
+    CTRLMODE_WALK_HS, //3
+    CTRLMODE_POSTURE_GENERATION_HS, //4
+    CTRLMODE_TEST_HS //5
 } _CONTROL_MODE;
 
 typedef enum {
@@ -187,7 +197,6 @@ typedef struct EndPoint {
     //POS pos;
     FTS ftSensor;
 
-    //RigidBodyDynamics::Math::VectorNd current; //* Current values
     VectorNd current; //* Current values
     VectorNd pre; //* Pre values
     VectorNd vel; //* vel values
@@ -212,39 +221,150 @@ public:
     CRobot();
     CRobot(const CRobot& orig);
     virtual ~CRobot();
+
+    double Count2Deg(int Gear_Ratio, INT32 Count);
+    double Count2DegDot(int Gear_Ratio, INT32 CountPerSec);
+    double Count2Rad(int Gear_Ratio, INT32 Count);
+    double Count2RadDot(int Gear_Ratio, INT32 CountPerSec);
+    double Count2Rad_ABS(int _Resolution, INT32 Count);
+    INT32 Count_tf(int _Ratio, INT32 _Count_in);
+    INT16 Cur2Tor(double targetCur, double _ratedCur);
+
     void setRobotModel(Model* getModel); //* get Robot Model
     void getCurrentJoint(VectorNd Angle, VectorNd Vel); // get Current Joint
     void getRobotState(VectorNd BasePosOri, VectorNd BaseVel, VectorNd jointAngle, VectorNd jointVel);
-    void ComputeTorqueControl();
-    VectorNd FK1(VectorNd q);
-    VectorNd IK1(VectorNd EP);
+
+    VectorNd FK_HS(VectorNd joint_pos);
+    VectorNd IK_HS(VectorNd EP_pos);
+    void Joint_Controller(void);
+    void Cartesian_Controller(void);
+    MatrixNd Jacobian_HS(VectorNd joint_pos);
+    VectorNd Localization_Hip2Base_Pos_HS(VectorNd EP_pos_local_hip);
+
+    void Mode_Change(void);
+    void Controller_Change(void);
+    void Init_Pos_Traj_HS(void);  // Joint target
+    void Home_Pos_Traj_HS(void);  // End point target
+
+    void ComputeTorqueControl(void);
+
+    //***************************************************************************************************8//
+
+    bool Encoder_Reset_Flag = true;
+    int Gear[NUM_OF_ELMO] = {50, 50, 50};
+    int Ratio[NUM_OF_ELMO] = {1, 1, 256};
+    double ratedCur[NUM_OF_ELMO] = {2850, 2850, 8900};
+    int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384}; //16384(2^14)
+
+    int ControlMode = 0;
+    int CommandFlag = 0;
+    bool Control_mode_flag = false;
     
+    bool Mode_Change_flag = false;
+    bool tmp_Mode_Change_flag = false;
+    unsigned int cnt_mode_change = 0;
+
+    
+    double dt = 0.001;
+    double cycle_time_HS = 0.0;
+    unsigned int cnt_HS = 0;
+    
+    unsigned int cnt_Control_change=0;
+    
+    VectorNd abs_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd abs_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd abs_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd abs_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    
+    VectorNd kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    
+    VectorNd init_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd init_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd init_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd init_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    
+    VectorNd target_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd target_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd target_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd target_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    
+    VectorNd goal_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd goal_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd goal_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd goal_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
+
+    VectorNd actual_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd ABS_actual_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Incre_actual_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Incre_actual_joint_pos_offset_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd actual_joint_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd tmp_actual_joint_vel_HS = VectorNd::Zero(9);
+
+    VectorNd init_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd target_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd target_joint_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd goal_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd goal_joint_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd joint_pos_err_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd joint_vel_err_HS = VectorNd::Zero(NUM_OF_ELMO);
+
+    VectorNd actual_EP_pos_local_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd pre_actual_EP_pos_local_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd actual_EP_vel_local_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd tmp_actual_EP_vel_local_HS = VectorNd::Zero(9);
+    VectorNd actual_EP_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd pre_actual_EP_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd actual_EP_vel_global_HS = VectorNd::Zero(NUM_OF_ELMO);
+
+    VectorNd init_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd target_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd target_EP_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd goal_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd goal_EP_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd EP_pos_err_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd EP_vel_err_HS = VectorNd::Zero(NUM_OF_ELMO);
+
+    VectorNd actual_Base_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Cart_Controller_HS = VectorNd::Zero(9);
+    VectorNd Joint_Controller_HS = VectorNd::Zero(9);
+
+
+    // RBDL 
     BASE base; //* coordinate of Body
     JOINT* joint; //* joints of the robot
-    ENDPOINT FR, FL, RR, RL, front_body;
+    ENDPOINT EP;
     int nDOF; //* number of DOFs of a robot
-
-    int ControlMode;
-    int CommandFlag;
-    int sub_ctrl_flag;
-    int TestMode;
-
     RigidBodyDynamics::Model* m_pModel; //* URDF Model
-    //RigidBodyDynamics::Math::VectorNd RobotState;
-    VectorNd RobotState;
-    VectorNd RobotStatedot;
-    VectorNd RobotState2dot;
-    VectorNd BasePosOri;
-    VectorNd BaseVel;
-    VectorNd JointAngle;
-    VectorNd JointVel;
-    
-    MatrixNd M_term = MatrixNd::Zero(10, 10); //10=3*1+6+1
-    //VectorNd hatNonLinearEffects = VectorNd::Zero(10);
-    //VectorNd G_term = VectorNd::Zero(10);
-    //VectorNd C_term = VectorNd::Zero(10);
-    //VectorNd CTC_Torque = VectorNd::Zero(10);
+    VectorNd RobotState=VectorNd::Zero(10);
+    VectorNd RobotStatedot=VectorNd::Zero(9);
+    VectorNd RobotState2dot=VectorNd::Zero(9);
+    VectorNd BasePosOri=VectorNd::Zero(6);
+    VectorNd BaseVel=VectorNd::Zero(6);
+    VectorNd JointAngle=VectorNd::Zero(3);
+    VectorNd JointVel=VectorNd::Zero(3);
+    Math::Quaternion QQ;
 
+    MatrixNd M_term = MatrixNd::Zero(9, 9); //10=3*1+6+1
+    VectorNd hatNonLinearEffects = VectorNd::Zero(9);
+    VectorNd G_term = VectorNd::Zero(9);
+    VectorNd C_term = VectorNd::Zero(9);
+    VectorNd CTC_Torque = VectorNd::Zero(9);
+
+    double L3_x = 0.0;
+    double L3_y = 0.0;
+    double L3_z = 0.309;
+
+    Vector3d Originbase = Vector3d(0, 0, 0);
+    Vector3d EP_OFFSET = Vector3d(0, 0, -L3_z);
+
+    MatrixNd J_HS = MatrixNd::Zero(3, 3);
+    MatrixNd J_BASE = MatrixNd::Zero(6, 9);
+    MatrixNd J_EP = MatrixNd::Zero(3, 9); //# size 3 * qdot_size(=9)
+    MatrixNd J_A = MatrixNd::Zero(9, 9);
+    MatrixNd J_A_EP=MatrixNd::Zero(3,3);
 private:
 };
 
