@@ -16,7 +16,6 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 
-
 catkin_package(
   INCLUDE_DIRS include   # "include" folder 
 #  LIBRARIES elmo_pkgs
@@ -55,5 +54,7 @@ add_executable(elmo_pkgs.exe src/main.cpp src/servo.c src/ecat_dc.c src/CRobot.c
 # To specify which libraries an executable target links against.
 target_link_libraries(elmo_pkgs.exe ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
 
+add_subdirectory(examples/xenomai_test)
+add_subdirectory(examples/soem_test)
 
 

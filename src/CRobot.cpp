@@ -44,9 +44,10 @@ INT32 CRobot::Count_tf(int _Ratio, INT32 _Count_in) {
     return _Count_out;
 }
 
-INT16 CRobot::Cur2Tor(double targetCur, double _ratedCur) {
-    INT16 inputTor = targetCur * 1000 / _ratedCur;
-    return inputTor;
+INT16 CRobot::Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur) {
+    INT16 inputCurrent = (OutputTorque /_Gear)/_Kt /_ratedCur * 1000;
+    
+    return inputCurrent;
 }
 
 void CRobot::setRobotModel(Model* getModel) {
@@ -129,10 +130,15 @@ void CRobot::ComputeTorqueControl(void) {
     Cartesian_Controller();
     Controller_Change();
 
-    CTC_Torque = Joint_Controller_HS + C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
+//    CTC_Torque = Joint_Controller_HS + C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
+    //CTC_Torque = Joint_Controller_HS - J_A.transpose() * (Cart_Controller_HS);
+    
+    //CTC_Torque = Joint_Controller_HS;
+    //CTC_Torque = G_term + C_term;
+    CTC_Torque = Joint_Controller_HS + G_term + C_term;
 
     //CTC_Torque = C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
-    //CTC_Torque = G_term + C_term;
+    //CTC_Torque = G_term;
     //CTC_Torque = Joint_Controller_HS + G_term + C_term;
 
     for (int i = 0; i < NUM_OF_ELMO; ++i) {

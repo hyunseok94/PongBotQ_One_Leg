@@ -228,7 +228,7 @@ public:
     double Count2RadDot(int Gear_Ratio, INT32 CountPerSec);
     double Count2Rad_ABS(int _Resolution, INT32 Count);
     INT32 Count_tf(int _Ratio, INT32 _Count_in);
-    INT16 Cur2Tor(double targetCur, double _ratedCur);
+    INT16 Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur);
 
     void setRobotModel(Model* getModel); //* get Robot Model
     void getCurrentJoint(VectorNd Angle, VectorNd Vel); // get Current Joint
@@ -253,7 +253,8 @@ public:
     bool Encoder_Reset_Flag = true;
     int Gear[NUM_OF_ELMO] = {50, 50, 50};
     int Ratio[NUM_OF_ELMO] = {1, 1, 256};
-    double ratedCur[NUM_OF_ELMO] = {2850, 2850, 8900};
+    double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9};
+    double Kt[NUM_OF_ELMO] = {0.159,0.159, 0.156};
     int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384}; //16384(2^14)
 
     int ControlMode = 0;
@@ -270,7 +271,7 @@ public:
     unsigned int cnt_HS = 0;
     
     unsigned int cnt_Control_change=0;
-    
+//    static RigidBodyDynamics::Math::VectorNd abs_kp_joint_HS =(RigidBodyDynamics::Math::VectorNd::Zero(NUM_OF_ELMO)).finished();
     VectorNd abs_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);

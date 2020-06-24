@@ -67,7 +67,7 @@
 #define EC_TIMEOUTMON 500
 
 //#define NUM_OF_ELMO 3
-#define _USE_DC
+//#define _USE_DC
 
 //#define R2D 180/PI
 //#define D2R PI/180
@@ -137,9 +137,7 @@ RTIME now3, previous3; // Thread 2 cycle time
 double del_time1 = 0.0; // Ethercat time
 double del_time2 = 0.0; // Thread 1 cycle time
 double del_time3 = 0.0; // Thread 1 cycle time
-
-clock_t start_point, end_point;
-
+double max_time = 0.0;
 //RBDL
 int version_test;
 Model* pongbot_q_model = new Model();
@@ -163,6 +161,7 @@ void GetActualData(void);
 void jointController(void);
 void DataSave(void);
 void FileSave(void);
+void Max_Time_Save(double now_time);
 
 // ROS function
 void Callback1(const std_msgs::Int32 &msg);
@@ -263,6 +262,7 @@ void motion_task(void* arg) {
     rt_printf("remain_time=%lld\n", remain_time);
 
     wkc = ec_receive_processdata(EC_TIMEOUTRET); //get reference DC time
+    
     cur_dc32 = (uint32_t) (ec_DCtime & 0xffffffff); //only consider first 32-bit
     dc_remain_time = cur_dc32 % cycletime; //remain time to next cycle of REF clock, update to master
 
@@ -287,7 +287,7 @@ void motion_task(void* arg) {
 #endif
         previous2 = now2;
         previous1 = rt_timer_read();
-        start_point = clock();
+
 
         ec_send_processdata();
         wkc = ec_receive_processdata(EC_TIMEOUTRET);
@@ -330,102 +330,101 @@ void motion_task(void* arg) {
                 sys_ready = 1;
             }
         } else { // realtime action...
-            // rt_mutex_acquire(&mutex_desc, TM_INFINITE);
-            EncoderRead();
-            GetActualData();
-            PongBotQ.Mode_Change();
-            switch (PongBotQ.ControlMode) {
-                case CTRLMODE_NONE: // 0
-                    //cout << "============= [CTRLMODE_NONE] ==========" << endl;
-                    //PongBotQ.CommandFlag = TORQUE_OFF;
-                    break;
-                case CTRLMODE_INITIALIZE: //1
-                    //cout << "============= [[CTRLMODE_INITIALIZES HS] ==========" << endl;  // = Joint Control
-                    PongBotQ.cnt_HS = 0;
-                    PongBotQ.CommandFlag = GOTO_INIT_POS_HS;
-                    PongBotQ.ControlMode = CTRLMODE_NONE;
-                    break;
 
-                case CTRLMODE_WALK_READY_HS: // 2
-                    //cout << "============= [[CTRLMODE_WALK READY HS] ==========" << endl;    // = Cartesian Control
-                    PongBotQ.cnt_HS = 0;
-                    PongBotQ.CommandFlag = GOTO_WALK_READY_POS_HS;
-                    PongBotQ.ControlMode = CTRLMODE_NONE;
-                    break;
-            }
-
-            switch (PongBotQ.CommandFlag) {
-
-                case NO_ACT:
-                    PongBotQ.target_joint_pos_HS = PongBotQ.actual_joint_pos_HS;
-                    PongBotQ.target_joint_vel_HS << 0, 0, 0;
-                    PongBotQ.target_EP_pos_HS = PongBotQ.actual_EP_pos_local_HS;
-                    PongBotQ.target_EP_vel_HS << 0, 0, 0;
-                    PongBotQ.ComputeTorqueControl();
-
-                    break;
-
-                case GOTO_INIT_POS_HS:
-                    if (PongBotQ.Mode_Change_flag == true) {
-                        PongBotQ.Init_Pos_Traj_HS();
+                        EncoderRead();
+                        GetActualData();
+                        PongBotQ.Mode_Change();
+                        switch (PongBotQ.ControlMode) {
+                            case CTRLMODE_NONE: // 0
+                                //cout << "============= [CTRLMODE_NONE] ==========" << endl;
+                                //PongBotQ.CommandFlag = TORQUE_OFF;
+                                break;
+                            case CTRLMODE_INITIALIZE: //1
+                                //cout << "============= [[CTRLMODE_INITIALIZES HS] ==========" << endl;  // = Joint Control
+                                PongBotQ.cnt_HS = 0;
+                                PongBotQ.CommandFlag = GOTO_INIT_POS_HS;
+                                PongBotQ.ControlMode = CTRLMODE_NONE;
+                                break;
+            
+                            case CTRLMODE_WALK_READY_HS: // 2
+                                //cout << "============= [[CTRLMODE_WALK READY HS] ==========" << endl;    // = Cartesian Control
+                                PongBotQ.cnt_HS = 0;
+                                PongBotQ.CommandFlag = GOTO_WALK_READY_POS_HS;
+                                PongBotQ.ControlMode = CTRLMODE_NONE;
+                                break;
+                        }
+            
+                        switch (PongBotQ.CommandFlag) {
+            
+                            case NO_ACT:
+                                PongBotQ.target_joint_pos_HS = PongBotQ.actual_joint_pos_HS;
+                                PongBotQ.target_joint_vel_HS << 0, 0, 0;
+                                PongBotQ.target_EP_pos_HS = PongBotQ.actual_EP_pos_local_HS;
+                                PongBotQ.target_EP_vel_HS << 0, 0, 0;
+                                PongBotQ.ComputeTorqueControl();
+            
+                                break;
+            
+                            case GOTO_INIT_POS_HS:
+                                if (PongBotQ.Mode_Change_flag == true) {
+                                    PongBotQ.Init_Pos_Traj_HS();
+                                }
+                                PongBotQ.ComputeTorqueControl();
+            
+                                break;
+            
+                            case GOTO_WALK_READY_POS_HS:
+                                if (PongBotQ.Mode_Change_flag == true) {
+                                    PongBotQ.Home_Pos_Traj_HS();
+                                }
+                                PongBotQ.ComputeTorqueControl();
+            
+                                break;
+            
+                        }
+                        jointController();
                     }
-                    PongBotQ.ComputeTorqueControl();
+            
+                    DataSave();
 
-                    break;
+            now2 = rt_timer_read();
+            now1 = rt_timer_read();
 
-                case GOTO_WALK_READY_POS_HS:
-                    if (PongBotQ.Mode_Change_flag == true) {
-                        PongBotQ.Home_Pos_Traj_HS();
-                    }
-                    PongBotQ.ComputeTorqueControl();
-
-                    break;
-
-            }
-            jointController();
-            //DataSave();
+            del_time1 = (double) (now1 - previous1) / 1000000;
+            del_time2 = (double) (now2 - previous2) / 1000000;
+            Max_Time_Save(del_time1);
         }
-
-        DataSave();
-        // rt_mutex_release(&mutex_desc);
-
-        now2 = rt_timer_read();
-        now1 = rt_timer_read();
-        end_point = clock();
-        del_time1 = (double) (now1 - previous1) / 1000000;
-        del_time2 = (double) (now2 - previous2) / 1000000;
-    }
-
-    //    rt_task_sleep(cycle_ns);
+        //    rt_task_sleep(cycle_ns);
 #ifdef _USE_DC
-    for (int i = 0; i < NUM_OF_ELMO; ++i)
-        ec_dcsync0(i + 1, FALSE, 0, 0); // SYNC0,1 on slave 1
+        for (int i = 0; i < NUM_OF_ELMO; ++i)
+            ec_dcsync0(i + 1, FALSE, 0, 0); // SYNC0,1 on slave 1
 #endif 
-    for (int i = 0; i < NUM_OF_ELMO; ++i) {
-        ELMO_drive_pt[i].ptOutParam->ControlWord = 0; //Servo OFF (Disable voltage, transition#9)
-    }
-    ec_send_processdata();
-    wkc = ec_receive_processdata(EC_TIMEOUTRET);
+        for (int i = 0; i < NUM_OF_ELMO; ++i) {
+            ELMO_drive_pt[i].ptOutParam->ControlWord = 0; //Servo OFF (Disable voltage, transition#9)
+        }
+        ec_send_processdata();
+        wkc = ec_receive_processdata(EC_TIMEOUTRET);
 
-    rt_task_sleep(cycle_ns);
+        rt_task_sleep(cycle_ns);
 
-    //rt_printf("End simple test, close socket\n");
-    /* stop SOEM, close socket */
-    printf("Request safe operational state for all slaves\n");
-    ec_slave[0].state = EC_STATE_SAFE_OP;
-    /* request SAFE_OP state for all slaves */
-    ec_writestate(0);
-    /* wait for all slaves to reach state */
-    ec_statecheck(0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE);
+        //rt_printf("End simple test, close socket\n");
+        /* stop SOEM, close socket */
+        printf("Request safe operational state for all slaves\n");
+        ec_slave[0].state = EC_STATE_SAFE_OP;
+        /* request SAFE_OP state for all slaves */
+        ec_writestate(0);
+        /* wait for all slaves to reach state */
+        ec_statecheck(0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE);
 
-    ec_slave[0].state = EC_STATE_PRE_OP;
-    /* request SAFE_OP state for all slaves */
-    ec_writestate(0);
-    /* wait for all slaves to reach state */
-    ec_statecheck(0, EC_STATE_PRE_OP, EC_TIMEOUTSTATE);
+        ec_slave[0].state = EC_STATE_PRE_OP;
+        /* request SAFE_OP state for all slaves */
+        ec_writestate(0);
+        /* wait for all slaves to reach state */
+        ec_statecheck(0, EC_STATE_PRE_OP, EC_TIMEOUTSTATE);
 
-    ec_close();
+        ec_close();
 }
+
 
 void print_task(void* arg) {
 
@@ -449,6 +448,7 @@ void print_task(void* arg) {
             } else {
                 rt_printf("_______________________________\n");
                 rt_printf("Thread_time : %f [ms] / %f [ms] / %f [ms] \n", del_time1, del_time2, del_time3);
+                rt_printf("max_time : %f [ms]\n", max_time);
                 rt_printf("tmp_flag = %d \n", PongBotQ.tmp_Mode_Change_flag);
                 rt_printf("cnt  = %d \n", PongBotQ.cnt_mode_change);
                 rt_printf("flag = %d \n", PongBotQ.Mode_Change_flag);
@@ -471,11 +471,22 @@ void print_task(void* arg) {
                 rt_printf("CTC_Torque=%3f / %3f / %3f \n", PongBotQ.joint[0].torque, PongBotQ.joint[1].torque, PongBotQ.joint[2].torque);
                 rt_printf("Joint_Torque=%3f / %3f / %3f \n", PongBotQ.Joint_Controller_HS[6], PongBotQ.Joint_Controller_HS[7], PongBotQ.Joint_Controller_HS[8]);
                 rt_printf("Cart_Torque=%3f / %3f / %3f \n", PongBotQ.Cart_Controller_HS[6], PongBotQ.Cart_Controller_HS[7], PongBotQ.Cart_Controller_HS[8]);
+                rt_printf("Gravity=%3f / %3f / %3f \n", PongBotQ.G_term[6], PongBotQ.G_term[7], PongBotQ.G_term[8]);
+                rt_printf("Coriolis=%3f / %3f / %3f \n", PongBotQ.C_term[6], PongBotQ.C_term[7], PongBotQ.C_term[8]);
                 rt_printf("_________________________________________\n");
                 rt_printf("Joint_P_gain=%3f / %3f / %3f \n", PongBotQ.kp_joint_HS[0], PongBotQ.kp_joint_HS[1], PongBotQ.kp_joint_HS[2]);
                 rt_printf("Joint_D_gain=%3f / %3f / %3f \n", PongBotQ.kd_joint_HS[0], PongBotQ.kd_joint_HS[1], PongBotQ.kd_joint_HS[2]);
                 rt_printf("Cart_P_gain=%3f / %3f / %3f \n", PongBotQ.kp_EP_HS[0], PongBotQ.kp_EP_HS[1], PongBotQ.kp_EP_HS[2]);
                 rt_printf("Cart_D_gain=%3f / %3f / %3f \n", PongBotQ.kd_EP_HS[0], PongBotQ.kd_EP_HS[1], PongBotQ.kd_EP_HS[2]);
+                rt_printf("_________________________________________\n");
+                //                std::cout<<"Current="<<PongBotQ.Tor2Cur(PongBotQ.joint[0].torque, PongBotQ.Kt[0], PongBotQ.Gear[0], PongBotQ.ratedCur[0])<<std::endl;
+                //                std::cout<<"Current="<<PongBotQ.Tor2Cur(PongBotQ.joint[1].torque, PongBotQ.Kt[1], PongBotQ.Gear[1], PongBotQ.ratedCur[1])<<std::endl;
+                //                std::cout<<"Current="<<PongBotQ.Tor2Cur(PongBotQ.joint[2].torque, PongBotQ.Kt[2], PongBotQ.Gear[2], PongBotQ.ratedCur[2])<<std::endl;
+                //                std::cout<<"________________"<<std::endl;
+                //                std::cout<<"J_HS"<<PongBotQ.J_HS<<std::endl;
+                //                std::cout<<"________________"<<std::endl;
+                //                std::cout<<"J_A_EP"<<PongBotQ.J_A_EP<<std::endl;
+                //                std::cout<<"________________"<<std::endl;
                 //ELMO Status
 
                 //                printf("actual_x=%3f[m]\n", actual_EP_pos_local_HS(0));
@@ -566,7 +577,7 @@ void GetActualData(void) {
     PongBotQ.actual_EP_vel_global_HS = (PongBotQ.actual_EP_pos_global_HS - PongBotQ.pre_actual_EP_pos_global_HS) / PongBotQ.dt;
     PongBotQ.pre_actual_EP_pos_global_HS = PongBotQ.actual_EP_pos_global_HS;
     PongBotQ.actual_Base_pos_global_HS << 0, 0, -PongBotQ.actual_EP_pos_local_HS(2);
-    //PongBotQ.J_HS = PongBotQ.Jacobian_HS(PongBotQ.actual_joint_pos_HS);
+    PongBotQ.J_HS = PongBotQ.Jacobian_HS(PongBotQ.actual_joint_pos_HS);
 }
 
 void Load(void) {
@@ -576,10 +587,10 @@ void Load(void) {
     Addons::URDFReadFromFile("/home/rc_lab/catkin_ws/src/PongBotQ_One_Leg/model/PONGBOT_ONE_LEG/urdf/PONGBOT_ONE_LEG.urdf", pongbot_q_model, true, true);
     PongBotQ.setRobotModel(pongbot_q_model);
 
-    PongBotQ.abs_kp_joint_HS << 10000.0, 10000.0, 10000.0;
-    PongBotQ.abs_kd_joint_HS << 500.0, 500.0, 500.0;
-    PongBotQ.abs_kp_EP_HS << 20000.0, 20000.0, 10000.0;
-    PongBotQ.abs_kd_EP_HS << 1000.0, 1000.0, 500.0;
+    PongBotQ.abs_kp_joint_HS << 100.0, 100.0, 100.0;
+    PongBotQ.abs_kd_joint_HS << 5.0, 5.0, 5.0;
+    PongBotQ.abs_kp_EP_HS << 2000.0, 2000.0, 1000.0;
+    PongBotQ.abs_kd_EP_HS << 100.0, 100.0, 50.0;
 
     PongBotQ.kp_joint_HS = PongBotQ.abs_kp_joint_HS;
     PongBotQ.kd_joint_HS = PongBotQ.abs_kd_joint_HS;
@@ -606,23 +617,24 @@ void jointController(void) {
     }
 
     for (int i = 0; i < NUM_OF_ELMO; i++) {
-        ELMO_drive_pt[i].ptOutParam->TargetTorque = PongBotQ.Cur2Tor(PongBotQ.joint[i].torque, PongBotQ.ratedCur[i]);
+        ELMO_drive_pt[i].ptOutParam->TargetTorque = PongBotQ.Tor2Cur(PongBotQ.joint[i].torque, PongBotQ.Kt[i], PongBotQ.Gear[i], PongBotQ.ratedCur[i]);
     }
 }
 
 void Callback1(const std_msgs::Int32 &msg) {
     PongBotQ.ControlMode = msg.data;
     PongBotQ.tmp_Mode_Change_flag = true;
-    PongBotQ.cnt_Control_change=0;
+    PongBotQ.cnt_Control_change = 0;
 }
 
 void ROSMsgPublish(void) {
-    m_data.data[0] = PongBotQ.actual_joint_pos_HS[0] * R2D;
-    m_data.data[1] = PongBotQ.actual_joint_pos_HS[1] * R2D;
-    m_data.data[2] = PongBotQ.actual_joint_pos_HS[2] * R2D;
-    m_data.data[3] = PongBotQ.target_joint_pos_HS[0] * R2D;
-    m_data.data[4] = PongBotQ.target_joint_pos_HS[1] * R2D;
-    m_data.data[5] = PongBotQ.target_joint_pos_HS[2] * R2D;
+    m_data.data[0] = del_time1;
+    //m_data.data[0] = PongBotQ.actual_joint_pos_HS[0] * R2D;
+    //    m_data.data[1] = PongBotQ.actual_joint_pos_HS[1] * R2D;
+    //    m_data.data[2] = PongBotQ.actual_joint_pos_HS[2] * R2D;
+    //    m_data.data[3] = PongBotQ.target_joint_pos_HS[0] * R2D;
+    //    m_data.data[4] = PongBotQ.target_joint_pos_HS[1] * R2D;
+    //    m_data.data[5] = PongBotQ.target_joint_pos_HS[2] * R2D;
     P_data.publish(m_data);
 }
 
@@ -771,4 +783,11 @@ bool ecat_init(void) {
     }
 
     return inOP;
+}
+
+void Max_Time_Save(double now_time) {
+
+    if(max_time<now_time){
+        max_time=now_time;
+    }    
 }
