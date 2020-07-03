@@ -135,8 +135,10 @@ void CRobot::ComputeTorqueControl(void) {
     
     //CTC_Torque = Joint_Controller_HS;
     //CTC_Torque = G_term + C_term;
-    CTC_Torque = Joint_Controller_HS + G_term + C_term;
-
+    //CTC_Torque = Joint_Controller_HS + G_term + C_term;
+    CTC_Torque = C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
+    
+    
     //CTC_Torque = C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
     //CTC_Torque = G_term;
     //CTC_Torque = Joint_Controller_HS + G_term + C_term;

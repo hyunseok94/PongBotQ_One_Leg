@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(elmo_pkgs)
 
+## Compile as C++11, supported in ROS Kinetic and newer
+add_compile_options(-std=c++11)
+
 LIST(APPEND CMAKE_MODULE_PATH
 ${PROJECT_SOURCE_DIR})
 
@@ -35,12 +38,13 @@ include_directories(
  ${EIGEN3_INCLUDE_DIR}
 )
 
-
 # Xenomai setting
 execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --cflags OUTPUT_VARIABLE XENO_CFLAGS)
 execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --ldflags OUTPUT_VARIABLE XENO_LDFLAGS)
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -lefence ${XENO_CFLAGS}")
+#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -lefence ${XENO_CFLAGS}")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS}")
+
 string(STRIP ${CMAKE_CXX_FLAGS} CMAKE_CXX_FLAGS)
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--wrap=main -Wl,--no-as-needed -Wl,@/usr/xenomai/lib/modechk.wrappers -lalchemy -lcopperplate /usr/xenomai/lib/xenomai/bootstrap.o -Wl,--dynamic-list=/usr/xenomai/lib/dynlist.ld -L/usr/xenomai/lib -lcobalt -lmodechk -lpthread -lrt")
 ## Xenomai Setting end

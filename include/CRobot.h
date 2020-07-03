@@ -243,8 +243,8 @@ public:
 
     void Mode_Change(void);
     void Controller_Change(void);
-    void Init_Pos_Traj_HS(void);  // Joint target
-    void Home_Pos_Traj_HS(void);  // End point target
+    void Init_Pos_Traj_HS(void); // Joint target
+    void Home_Pos_Traj_HS(void); // End point target
 
     void ComputeTorqueControl(void);
 
@@ -252,46 +252,51 @@ public:
 
     bool Encoder_Reset_Flag = true;
     int Gear[NUM_OF_ELMO] = {50, 50, 50};
+    //int Gear[NUM_OF_ELMO] = {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50};
     int Ratio[NUM_OF_ELMO] = {1, 1, 256};
+    //int Ratio[NUM_OF_ELMO] = {1, 1, 256, 1, 1, 256, 1, 1, 1, 256, 1, 1, 256};
     double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9};
-    double Kt[NUM_OF_ELMO] = {0.159,0.159, 0.156};
+    //double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9, 2.85, 2.85, 8.9, 2.85, 2.85, 2.85, 8.9, 2.85, 2.85, 8.9};
+    double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156};
+    //double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156, 0.159, 0.159, 0.156, 0.159, 0.159, 0.159, 0.156, 0.159, 0.159, 0.156};
     int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384}; //16384(2^14)
+    //int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384,65536, 65536, 16384,65536,65536, 65536, 16384,65536, 65536, 16384}; //16384(2^14)
 
     int ControlMode = 0;
     int CommandFlag = 0;
     bool Control_mode_flag = false;
-    
+
     bool Mode_Change_flag = false;
     bool tmp_Mode_Change_flag = false;
     unsigned int cnt_mode_change = 0;
 
-    
+
     double dt = 0.001;
     double cycle_time_HS = 0.0;
     unsigned int cnt_HS = 0;
-    
-    unsigned int cnt_Control_change=0;
-//    static RigidBodyDynamics::Math::VectorNd abs_kp_joint_HS =(RigidBodyDynamics::Math::VectorNd::Zero(NUM_OF_ELMO)).finished();
+
+    unsigned int cnt_Control_change = 0;
+    //    static RigidBodyDynamics::Math::VectorNd abs_kp_joint_HS =(RigidBodyDynamics::Math::VectorNd::Zero(NUM_OF_ELMO)).finished();
     VectorNd abs_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
-    
+
     VectorNd kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
-    
+
     VectorNd init_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd init_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd init_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd init_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
-    
+
     VectorNd target_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd target_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd target_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd target_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
-    
+
     VectorNd goal_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd goal_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd goal_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
@@ -339,13 +344,13 @@ public:
     ENDPOINT EP;
     int nDOF; //* number of DOFs of a robot
     RigidBodyDynamics::Model* m_pModel; //* URDF Model
-    VectorNd RobotState=VectorNd::Zero(10);
-    VectorNd RobotStatedot=VectorNd::Zero(9);
-    VectorNd RobotState2dot=VectorNd::Zero(9);
-    VectorNd BasePosOri=VectorNd::Zero(6);
-    VectorNd BaseVel=VectorNd::Zero(6);
-    VectorNd JointAngle=VectorNd::Zero(3);
-    VectorNd JointVel=VectorNd::Zero(3);
+    VectorNd RobotState = VectorNd::Zero(10);
+    VectorNd RobotStatedot = VectorNd::Zero(9);
+    VectorNd RobotState2dot = VectorNd::Zero(9);
+    VectorNd BasePosOri = VectorNd::Zero(6);
+    VectorNd BaseVel = VectorNd::Zero(6);
+    VectorNd JointAngle = VectorNd::Zero(3);
+    VectorNd JointVel = VectorNd::Zero(3);
     Math::Quaternion QQ;
 
     MatrixNd M_term = MatrixNd::Zero(9, 9); //10=3*1+6+1
@@ -365,7 +370,7 @@ public:
     MatrixNd J_BASE = MatrixNd::Zero(6, 9);
     MatrixNd J_EP = MatrixNd::Zero(3, 9); //# size 3 * qdot_size(=9)
     MatrixNd J_A = MatrixNd::Zero(9, 9);
-    MatrixNd J_A_EP=MatrixNd::Zero(3,3);
+    MatrixNd J_A_EP = MatrixNd::Zero(3, 3);
 private:
 };
 

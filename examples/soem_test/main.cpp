@@ -14,7 +14,7 @@
 #include "ecat_dc.h"
 
 #define NUM_OF_ELMO 3
-
+//#define _USE_DC
 //Save
 #define SAVE_LENGTH 8    //The number of data
 #define SAVE_COUNT 10000 //Save Time = 10000[ms]
@@ -47,7 +47,11 @@ unsigned long ready_cnt = 0;
 unsigned int cycle_ns = 1000000; // Control Cycle 1[ms]
 
 int recv_fail_cnt = 0;
-char ecat_ifname[32] = "eth0";
+
+//char ecat_ifname[32] = "rteth0";
+char ecat_ifname[32] = "enp5s0";
+//char ecat_ifname[32] = "eno1";
+//char ecat_ifname[32] = "eth1";
 ELMO_Drive_pt ELMO_drive_pt[NUM_OF_ELMO];
 bool needlf;
 bool inOP;
@@ -59,11 +63,12 @@ int oloop, iloop, wkc_count;
 int expectedWKC;
 volatile int wkc;
 UINT16 maxTorque = 3500;
-
-void demo(void *arg) {
-    RTIME now1, previous1;
-    RTIME now2, previous2;
+ RTIME now1, previous1;
+RTIME now2, previous2;
     
+void demo(void *arg) {
+   
+
     if (ecat_init() == false) {
         ethercat_run = 0;
     }
@@ -115,16 +120,17 @@ void demo(void *arg) {
 #endif
 
     while (ethercat_run) {
-        
+
 #ifdef _USE_DC     
         rt_ts += (RTIME) (cycle_ns + toff);
         rt_task_sleep_until(rt_ts);
 #else  
         rt_task_wait_period(NULL);
 #endif
-        previous2 = now2;
         previous1 = rt_timer_read();
+        previous2 = now2;
         
+
         ec_send_processdata();
         wkc = ec_receive_processdata(EC_TIMEOUTRET);
         if (wkc < 3 * (NUM_OF_ELMO)) {
@@ -145,11 +151,6 @@ void demo(void *arg) {
             max_DCtime = cur_DCtime;
         }
 #endif                   
-        ready_cnt++;
-        if (ready_cnt >= 1000) {
-            ready_cnt = 6000;
-            sys_ready = 1;
-        }
 
         if (sys_ready == 0) {
             ServoOn();
@@ -230,7 +231,7 @@ int main(int argc, char* argv[]) {
 void DataSave(void) {
     save_array[save_cnt][0] = Thread_time1;
     save_array[save_cnt][1] = Thread_time2;
-   
+
     if (save_cnt < SAVE_COUNT - 1)
         save_cnt++;
 }
