@@ -80,7 +80,7 @@ using namespace RigidBodyDynamics::Math;
 
 //*************** 1. Variables ****************/
 // Ethercat
-char ecat_ifname[32] = "eth0";
+char ecat_ifname[32] = "enp5s0";
 ELMO_Drive_pt ELMO_drive_pt[NUM_OF_ELMO];
 bool needlf;
 bool inOP;
@@ -166,6 +166,9 @@ void Max_Time_Save(double now_time);
 // ROS function
 void Callback1(const std_msgs::Int32 &msg);
 void ROSMsgPublish(void);
+static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value);
+static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value);
+static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value);
 
 int main(int argc, char *argv[]) {
 
@@ -698,22 +701,53 @@ bool ecat_init(void) {
             for (int k = 0; k < NUM_OF_ELMO; ++k) {
                 if (ec_slavecount >= 1) {
                     //printf("Re mapping for ELMO...\n");
-                    ob3 = 0;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+//                    ob3 = 0;
+//                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+//                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+//
+//                    ob2 = 0x1605;
+//                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
+//                    ob3 = 1;
+//                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+//
+//                    ob2 = 0x1A03;
+//                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
+//                    ob2 = 0x1A1E;
+//                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x02, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
+//                    ob3 = 2;
+//                    //ob3=1;
+//                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+                    
+                     wkc += RS3_write8(k + 1, 0x1c12, 0x0000, 0x00); //(slave, index, subindex, value)
+                    wkc += RS3_write8(k + 1, 0x1608, 0x0000, 0x00);
 
-                    ob2 = 0x1605;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-                    ob3 = 1;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0001, 0x607A0020);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0002, 0x60FF0020);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0003, 0x60710010);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0004, 0x60720010);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0005, 0x60400010);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0006, 0x60600008);
+                    wkc += RS3_write8(k + 1, 0x1608, 0x0000, 0x06);
 
-                    ob2 = 0x1A03;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-                    ob2 = 0x1A1E;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x02, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-                    ob3 = 2;
-                    //ob3=1;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+
+                    wkc += RS3_write16(k + 1, 0x1c12, 0x0001, 0x1608); //  (row,PDO) 
+                    wkc += RS3_write8(k + 1, 0x1c12, 0x0000, 0x01); //  (index,Row)
+
+                    ////////////////////////////////////////////////////////////////////////////
+
+                    wkc += RS3_write8(k + 1, 0x1c13, 0x0000, 0x00); //(slave, index, subindex, value)
+                    wkc += RS3_write8(k + 1, 0x1a07, 0x0000, 0x00);
+
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0001, 0x60640020);
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0002, 0x60FD0020);
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0003, 0x606C0020);
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0004, 0x60410010);
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0005, 0x20a00020);
+
+                    wkc += RS3_write8(k + 1, 0x1a07, 0x0000, 0x05);
+                    wkc += RS3_write16(k + 1, 0x1c13, 0x0001, 0x1a07); //  (row,PDO) 
+                    wkc += RS3_write8(k + 1, 0x1c13, 0x0000, 0x01); //  (index,Row)
+                    
                 }
 
             }
@@ -789,4 +823,22 @@ void Max_Time_Save(double now_time) {
     if (max_time < now_time) {
         max_time = now_time;
     }
+}
+
+static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
+}
+
+static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
+}
+
+static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
 }

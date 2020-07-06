@@ -253,7 +253,7 @@ public:
     bool Encoder_Reset_Flag = true;
     int Gear[NUM_OF_ELMO] = {50, 50, 50};
     //int Gear[NUM_OF_ELMO] = {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50};
-    int Ratio[NUM_OF_ELMO] = {1, 1, 256};
+    int Ratio[NUM_OF_ELMO] = {1, 1, 1};
     //int Ratio[NUM_OF_ELMO] = {1, 1, 256, 1, 1, 256, 1, 1, 1, 256, 1, 1, 256};
     double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9};
     //double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9, 2.85, 2.85, 8.9, 2.85, 2.85, 2.85, 8.9, 2.85, 2.85, 8.9};

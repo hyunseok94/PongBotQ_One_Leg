@@ -7,6 +7,8 @@
 // **********Xenomai libraries*********//
 #include <alchemy/task.h>
 #include <alchemy/timer.h>
+#include <ostream>
+#include <iostream>
 
 // **********SOEM library*********//
 #include "ethercat.h"
@@ -40,7 +42,7 @@ int ethercat_run = 1;
 int ServoState = 0;
 int servo_ready = 0;
 int sys_ready = 0;
-double started[NUM_OF_ELMO] = {0, 0, 0};
+double started[NUM_OF_ELMO] = {0};
 uint16_t controlword = 0;
 long stick = 0;
 unsigned long ready_cnt = 0;
@@ -63,11 +65,20 @@ int oloop, iloop, wkc_count;
 int expectedWKC;
 volatile int wkc;
 UINT16 maxTorque = 3500;
- RTIME now1, previous1;
+RTIME now1, previous1;
 RTIME now2, previous2;
-    
+
+RTIME A, B, C, D, E, F, G, H;
+double interval1;
+double interval2;
+double interval3;
+
+static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value);
+static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value);
+static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value);
+
 void demo(void *arg) {
-   
+
 
     if (ecat_init() == false) {
         ethercat_run = 0;
@@ -129,14 +140,18 @@ void demo(void *arg) {
 #endif
         previous1 = rt_timer_read();
         previous2 = now2;
-        
 
         ec_send_processdata();
+        A = rt_timer_read();
+        interval1 = (double) (A - previous1) / 1000000;
         wkc = ec_receive_processdata(EC_TIMEOUTRET);
+        std::cout << "EC=" << EC_TIMEOUTRET << std::endl;
+        std::cout << "wk=" << wkc << std::endl;
         if (wkc < 3 * (NUM_OF_ELMO)) {
             recv_fail_cnt++;
         }
-
+        B = rt_timer_read();
+        interval2 = (double) (B - A) / 1000000;
 #ifdef _USE_DC    
         cur_dc32 = (uint32_t) (ec_DCtime & 0xffffffff); //use 32-bit only
         if (cur_dc32 > pre_dc32) { //normal case
@@ -169,11 +184,13 @@ void demo(void *arg) {
         } else { // realtime action...
 
         }
+
         now1 = rt_timer_read();
         now2 = rt_timer_read();
 
         Thread_time1 = (double) (now1 - previous1) / 1000000;
         Thread_time2 = (double) (now2 - previous2) / 1000000;
+        interval3 = (double) (now1 - B) / 1000000;
         //previous = now;
         printf("Time since last turn: %6f ms / %6f ms\n", Thread_time1, Thread_time2);
         DataSave();
@@ -191,6 +208,7 @@ void demo(void *arg) {
     wkc = ec_receive_processdata(EC_TIMEOUTRET);
 
     rt_task_sleep(cycle_ns);
+
 
     //rt_printf("End simple test, close socket\n");
     /* stop SOEM, close socket */
@@ -231,6 +249,10 @@ int main(int argc, char* argv[]) {
 void DataSave(void) {
     save_array[save_cnt][0] = Thread_time1;
     save_array[save_cnt][1] = Thread_time2;
+
+    save_array[save_cnt][2] = interval1;
+    save_array[save_cnt][3] = interval2;
+    save_array[save_cnt][4] = interval3;
 
     if (save_cnt < SAVE_COUNT - 1)
         save_cnt++;
@@ -273,25 +295,39 @@ bool ecat_init(void) {
             ec_statecheck(0, EC_STATE_PRE_OP, EC_TIMEOUTSTATE);
 
             // PDO re-mapping //
-            for (int k = 0; k < NUM_OF_ELMO; ++k) {
+            for (int k = 0; k < NUM_OF_ELMO; k++) {
                 if (ec_slavecount >= 1) {
                     //printf("Re mapping for ELMO...\n");
-                    ob3 = 0;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+                    wkc += RS3_write8(k + 1, 0x1c12, 0x0000, 0x00); //(slave, index, subindex, value)
+                    wkc += RS3_write8(k + 1, 0x1608, 0x0000, 0x00);
 
-                    ob2 = 0x1605;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-                    ob3 = 1;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0001, 0x607A0020);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0002, 0x60FF0020);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0003, 0x60710010);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0004, 0x60720010);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0005, 0x60400010);
+                    wkc += RS3_write32(k + 1, 0x1608, 0x0006, 0x60600008);
+                    wkc += RS3_write8(k + 1, 0x1608, 0x0000, 0x06);
 
-                    ob2 = 0x1A03;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-                    ob2 = 0x1A1E;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x02, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-                    ob3 = 2;
-                    //ob3=1;
-                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+
+                    wkc += RS3_write16(k + 1, 0x1c12, 0x0001, 0x1608); //  (row,PDO) 
+                    wkc += RS3_write8(k + 1, 0x1c12, 0x0000, 0x01); //  (index,Row)
+
+                    ////////////////////////////////////////////////////////////////////////////
+
+                    wkc += RS3_write8(k + 1, 0x1c13, 0x0000, 0x00); //(slave, index, subindex, value)
+                    wkc += RS3_write8(k + 1, 0x1a07, 0x0000, 0x00);
+
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0001, 0x60640020);
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0002, 0x60FD0020);
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0003, 0x606C0020);
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0004, 0x60410010);
+                    wkc += RS3_write32(k + 1, 0x1a07, 0x0005, 0x20a00020);
+                    wkc += RS3_write8(k + 1, 0x1a07, 0x0000, 0x05);
+                    
+                    wkc += RS3_write16(k + 1, 0x1c13, 0x0001, 0x1a07); //  (row,PDO) 
+                    wkc += RS3_write8(k + 1, 0x1c13, 0x0000, 0x01); //  (index,Row)
+
                 }
 
             }
@@ -377,4 +413,22 @@ void ServoOff(void) {
     for (int i = 0; i < NUM_OF_ELMO; i++) {
         ELMO_drive_pt[i].ptOutParam->ControlWord = 0; //Servo OFF (Disable voltage, transition#9)
     }
+}
+
+static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
+}
+
+static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
+}
+
+static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
 }
