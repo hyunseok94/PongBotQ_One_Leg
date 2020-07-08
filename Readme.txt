@@ -11,18 +11,18 @@ ________________________________________________________________________________
 Main. execution
 (0) roscore
 (1) cm
-(2) cd ~/catkin_ws/src/PongBotQ_One_Leg/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip elmo_pkgs.exe
-(3) rosrun elmo_pkgs elmo_pkgs.exe
+(2) cd ~/catkin_ws/src/PongBotQ_One_Leg/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip elmo_pkgs_exe
+(3) roslaunch elmo_pkgs elmo.launch
 ___________________________________________________________________________________
 Example. xenomai_test execution
 (0) cm
-(1) cd ~/catkin_ws/src/PongBotQ_One_Leg/examples/xenomai_test/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip xenomai_test.exe
-(2) sudo ./xenomai_test.exe
+(1) cd ~/catkin_ws/src/PongBotQ_One_Leg/examples/xenomai_test/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip xenomai_test_exe
+(2) sudo ./xenomai_test_exe
 ___________________________________________________________________________________
 Example. soem_test execution
 (0) cm
-(1) cd ~/catkin_ws/src/PongBotQ_One_Leg/examples/soem_test/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip soem_test.exe
-(2) sudo ./soem_test.exe
+(1) cd ~/catkin_ws/src/PongBotQ_One_Leg/examples/soem_test/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip soem_test_exe
+(2) sudo ./soem_test_exe
 
 
 ##############################################################################

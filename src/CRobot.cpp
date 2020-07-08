@@ -136,12 +136,11 @@ void CRobot::ComputeTorqueControl(void) {
     //CTC_Torque = Joint_Controller_HS;
     //CTC_Torque = G_term + C_term;
     //CTC_Torque = Joint_Controller_HS + G_term + C_term;
-    CTC_Torque = C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
-    
     
     //CTC_Torque = C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
     //CTC_Torque = G_term;
-    //CTC_Torque = Joint_Controller_HS + G_term + C_term;
+    //CTC_Torque = C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
+    CTC_Torque = Joint_Controller_HS + G_term + C_term;
 
     for (int i = 0; i < NUM_OF_ELMO; ++i) {
         joint[i].torque = CTC_Torque(6 + i);
@@ -196,6 +195,35 @@ void CRobot::Home_Pos_Traj_HS(void) {
     }
     target_joint_pos_HS = IK_HS(target_EP_pos_HS);
     target_joint_vel_HS = J_A_EP.inverse() * target_EP_vel_HS;
+}
+
+void CRobot::Cycle_Test_Pos_Traj_HS(void){
+    if (cnt_HS == 0) {
+        cycle_time_HS = 3.0;
+        alpha=10*D2R;
+        goal_joint_pos_HS << 0.0, 0.0, actual_joint_pos_HS(2)+alpha;
+                
+        target_joint_pos_HS = actual_joint_pos_HS;
+        init_joint_pos_HS = target_joint_pos_HS;
+        target_joint_vel_HS << 0, 0, 0;
+        cnt_HS++;
+    }
+    else if (cnt_HS < (unsigned int) (cycle_time_HS / dt)) {
+        for (int i = 0; i < NUM_OF_ELMO; ++i) {
+            target_joint_pos_HS[i] = init_joint_pos_HS[i]+(goal_joint_pos_HS[i] - init_joint_pos_HS[i]) / 2.0 * (1 - cos(2*PI / cycle_time_HS * cnt_HS * dt));
+            target_joint_vel_HS[i] = (goal_joint_pos_HS[i] - init_joint_pos_HS[i]) / 2.0 * (2.0 * PI) / cycle_time_HS * sin(2*PI / cycle_time_HS * cnt_HS * dt);
+        }
+        cnt_HS++;
+    }
+    else{
+        if(stop_flag==false){
+           cnt_HS=1; 
+        }
+        else{
+           target_joint_pos_HS = goal_joint_pos_HS;
+           target_joint_vel_HS << 0, 0, 0;
+        }
+    }
 }
 
 VectorNd CRobot::FK_HS(VectorNd joint_pos) {

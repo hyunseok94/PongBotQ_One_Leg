@@ -29,9 +29,10 @@ typedef enum {
     CTRLMODE_NONE = 0,
     CTRLMODE_INITIALIZE, //1
     CTRLMODE_WALK_READY_HS, //2
-    CTRLMODE_WALK_HS, //3
-    CTRLMODE_POSTURE_GENERATION_HS, //4
-    CTRLMODE_TEST_HS //5
+    CTRLMODE_CYCLE_TEST_HS, //3
+    CTRLMODE_WALK_HS, //4
+    CTRLMODE_POSTURE_GENERATION_HS, //5
+    CTRLMODE_TEST_HS //6
 } _CONTROL_MODE;
 
 typedef enum {
@@ -123,7 +124,8 @@ typedef enum {
     GOTO_TROT_POS_HS,
     GOTO_WALK_POS_HS,
     GOTO_POSTURE_GENERATION_HS,
-    GOTO_TEST_POS_HS
+    GOTO_TEST_POS_HS,
+    GOTO_CYCLE_POS_HS
 
 } _COMMAND_FLAG;
 
@@ -245,9 +247,9 @@ public:
     void Controller_Change(void);
     void Init_Pos_Traj_HS(void); // Joint target
     void Home_Pos_Traj_HS(void); // End point target
-
+    void Cycle_Test_Pos_Traj_HS(void);
     void ComputeTorqueControl(void);
-
+    
     //***************************************************************************************************8//
 
     bool Encoder_Reset_Flag = true;
@@ -371,6 +373,9 @@ public:
     MatrixNd J_EP = MatrixNd::Zero(3, 9); //# size 3 * qdot_size(=9)
     MatrixNd J_A = MatrixNd::Zero(9, 9);
     MatrixNd J_A_EP = MatrixNd::Zero(3, 3);
+    
+    double alpha=0.0;
+    bool stop_flag = false;
 private:
 };
 

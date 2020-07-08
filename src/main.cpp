@@ -46,6 +46,14 @@
 #include <alchemy/timer.h>
 #include <alchemy/mutex.h>
 
+
+// *********** RVIZ *************//
+#include <sensor_msgs/JointState.h>             //for rviz
+#include <geometry_msgs/WrenchStamped.h>        //for rviz
+//#include <tf/transform_broadcaster.h>           //for rviz
+//#include <ignition/math/Vector3.hh>
+
+
 //#include <stdlib.h>
 //#include <unistd.h>
 //#include <sched.h>
@@ -75,6 +83,7 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using Eigen::Vector3d;
+
 using namespace RigidBodyDynamics;
 using namespace RigidBodyDynamics::Math;
 
@@ -114,12 +123,14 @@ UINT16 maxTorque = 3500;
 
 //Save
 #define SAVE_LENGTH 8    //The number of data
-#define SAVE_COUNT 10000 //Save Time = 10000[ms]
+//#define SAVE_COUNT 3600000 //Save Time = 3600000[ms]=3600[s]
+#define SAVE_COUNT 100000 //Save Time = 3600000[ms]=3600[s]
 unsigned int save_cnt = 0;
 double save_array[SAVE_COUNT][SAVE_LENGTH];
 
 // ROS Param
 ros::Subscriber S_Mode;
+ros::Subscriber S_Stop;
 ros::Publisher P_data;
 int ros_exit = 0;
 std_msgs::Float64MultiArray m_data;
@@ -145,6 +156,13 @@ Model* pongbot_q_model = new Model();
 //CRobot
 CRobot PongBotQ;
 
+
+//Rviz
+ros::Publisher P_joint_states;
+sensor_msgs::JointState m_joint_states;
+//geometry_msgs::TransformStamped odom_trans;
+
+
 //**********************************************//
 //*************** 2. Functions ****************//
 void ServoOn(void); // : Servo ON
@@ -165,6 +183,8 @@ void Max_Time_Save(double now_time);
 
 // ROS function
 void Callback1(const std_msgs::Int32 &msg);
+void Callback2(const std_msgs::Int32 &msg);
+
 void ROSMsgPublish(void);
 static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value);
 static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value);
@@ -177,16 +197,20 @@ int main(int argc, char *argv[]) {
 
     mlockall(MCL_CURRENT | MCL_FUTURE);
 
-    rt_mutex_create(&mutex_desc, "MyMutex");
-
     printf(" ROS Setting ...\n");
     ros::init(argc, argv, "elmo_pkgs");
     ros::NodeHandle nh;
     ros::Rate loop_rate(1000);
-
+        
     S_Mode = nh.subscribe("Mode", 1, Callback1);
+    S_Stop = nh.subscribe("STOP", 1, Callback2);
     P_data = nh.advertise<std_msgs::Float64MultiArray>("ROS_DATA", 1);
+    P_joint_states = nh.advertise<sensor_msgs::JointState>("joint_states", 1);
+    
     m_data.data.resize(10);
+    m_joint_states.name.resize(3);
+    m_joint_states.position.resize(3);
+       
     sleep(1);
 
     printf(" Init main ...\n");
@@ -217,9 +241,6 @@ int main(int argc, char *argv[]) {
 
 
     while (ros::ok()) {
-        //rt_mutex_acquire(&mutex_desc, TM_INFINITE);
-        // printf("main_running\n");
-        //rt_mutex_release(&mutex_desc);
         ROSMsgPublish();
         ros::spinOnce();
     }
@@ -291,7 +312,6 @@ void motion_task(void* arg) {
         previous2 = now2;
         previous1 = rt_timer_read();
 
-
         ec_send_processdata();
         wkc = ec_receive_processdata(EC_TIMEOUTRET);
         if (wkc < 3 * (NUM_OF_ELMO)) {
@@ -355,6 +375,14 @@ void motion_task(void* arg) {
                     PongBotQ.CommandFlag = GOTO_WALK_READY_POS_HS;
                     PongBotQ.ControlMode = CTRLMODE_NONE;
                     break;
+                
+                case CTRLMODE_CYCLE_TEST_HS: // 3
+                    //cout << "============= [[CTRLMODE_WALK READY HS] ==========" << endl;    // = Cartesian Control
+                    PongBotQ.cnt_HS = 0;
+                    PongBotQ.CommandFlag = GOTO_CYCLE_POS_HS;
+                    PongBotQ.ControlMode = CTRLMODE_NONE;
+                    break;
+                    
             }
 
             switch (PongBotQ.CommandFlag) {
@@ -383,12 +411,18 @@ void motion_task(void* arg) {
                     PongBotQ.ComputeTorqueControl();
 
                     break;
+                    
+                case GOTO_CYCLE_POS_HS:
+                    if (PongBotQ.Mode_Change_flag == true) {
+                        PongBotQ.Cycle_Test_Pos_Traj_HS();
+                    }
+                    PongBotQ.ComputeTorqueControl();
+
+                    break;
 
             }
             jointController();
         }
-
-        DataSave();
 
         now2 = rt_timer_read();
         now1 = rt_timer_read();
@@ -396,6 +430,7 @@ void motion_task(void* arg) {
         del_time1 = (double) (now1 - previous1) / 1000000;
         del_time2 = (double) (now2 - previous2) / 1000000;
         Max_Time_Save(del_time1);
+        DataSave();
     }
     //    rt_task_sleep(cycle_ns);
 #ifdef _USE_DC
@@ -591,7 +626,7 @@ void Load(void) {
 
     PongBotQ.abs_kp_joint_HS << 100.0, 100.0, 100.0;
     PongBotQ.abs_kd_joint_HS << 5.0, 5.0, 5.0;
-    PongBotQ.abs_kp_EP_HS << 1000.0, 1000.0, 250.0;
+    PongBotQ.abs_kp_EP_HS << 1000.0, 1000.0, 150.0;
     PongBotQ.abs_kd_EP_HS << 50.0, 50.0, 10.0;
 
     PongBotQ.kp_joint_HS = PongBotQ.abs_kp_joint_HS;
@@ -606,6 +641,7 @@ void Load(void) {
 
     PongBotQ.ControlMode = CTRLMODE_NONE; //=0
     PongBotQ.CommandFlag = NO_ACT; //=0
+
 }
 
 void jointController(void) {
@@ -629,7 +665,13 @@ void Callback1(const std_msgs::Int32 &msg) {
     PongBotQ.cnt_Control_change = 0;
 }
 
+void Callback2(const std_msgs::Int32 &msg) {
+    PongBotQ.stop_flag = true;
+}
+
 void ROSMsgPublish(void) {
+    //tf::TransformBroadcaster broadcaster;
+    
     m_data.data[0] = del_time1;
     //m_data.data[0] = PongBotQ.actual_joint_pos_HS[0] * R2D;
     //    m_data.data[1] = PongBotQ.actual_joint_pos_HS[1] * R2D;
@@ -637,18 +679,52 @@ void ROSMsgPublish(void) {
     //    m_data.data[3] = PongBotQ.target_joint_pos_HS[0] * R2D;
     //    m_data.data[4] = PongBotQ.target_joint_pos_HS[1] * R2D;
     //    m_data.data[5] = PongBotQ.target_joint_pos_HS[2] * R2D;
+    
+    m_joint_states.header.stamp = ros::Time::now();
+    m_joint_states.name[0] = "HR_JOINT";
+    m_joint_states.name[1] = "HP_JOINT";
+    m_joint_states.name[2] = "KN_JOINT";
+    m_joint_states.position[0] = PongBotQ.actual_joint_pos_HS[0];
+    m_joint_states.position[1] = PongBotQ.actual_joint_pos_HS[1];
+    m_joint_states.position[2] = PongBotQ.actual_joint_pos_HS[2];
+    
+//    odom_trans.header.stamp = ros::Time::now();
+//    odom_trans.header.frame_id = "odom";
+//    odom_trans.child_frame_id = "BASE";
+//    
+//    odom_trans.transform.translation.x = 0;
+//    odom_trans.transform.translation.y = 0;
+//    odom_trans.transform.translation.z = 1;
+//    odom_trans.transform.rotation.x = 0;
+//    odom_trans.transform.rotation.y = 0;
+//    odom_trans.transform.rotation.z = 0;
+//    odom_trans.transform.rotation.w = 1;
+    
+    
     P_data.publish(m_data);
+
+    P_joint_states.publish(m_joint_states);
+    //broadcaster.sendTransform(odom_trans);
+    
 }
 
 void DataSave(void) {
-    save_array[save_cnt][0] = PongBotQ.cnt_HS / 1000.0;
-    save_array[save_cnt][1] = (int) PongBotQ.ControlMode;
-    save_array[save_cnt][2] = PongBotQ.actual_joint_pos_HS[0] * R2D;
-    save_array[save_cnt][3] = PongBotQ.actual_joint_pos_HS[1] * R2D;
-    save_array[save_cnt][4] = PongBotQ.actual_joint_pos_HS[2] * R2D;
-    save_array[save_cnt][5] = PongBotQ.target_joint_pos_HS[0] * R2D;
-    save_array[save_cnt][6] = PongBotQ.target_joint_pos_HS[1] * R2D;
-    save_array[save_cnt][7] = PongBotQ.target_joint_pos_HS[2] * R2D;
+    //save_array[save_cnt][0] = PongBotQ.cnt_HS / 1000.0;
+    //save_array[save_cnt][1] = (int) PongBotQ.ControlMode;
+    //    save_array[save_cnt][2] = PongBotQ.actual_joint_pos_HS[0] * R2D;
+    //    save_array[save_cnt][3] = PongBotQ.actual_joint_pos_HS[1] * R2D;
+    //    save_array[save_cnt][4] = PongBotQ.actual_joint_pos_HS[2] * R2D;
+    //    save_array[save_cnt][5] = PongBotQ.target_joint_pos_HS[0] * R2D;
+    //    save_array[save_cnt][6] = PongBotQ.target_joint_pos_HS[1] * R2D;
+    //    save_array[save_cnt][7] = PongBotQ.target_joint_pos_HS[2] * R2D;
+    save_array[save_cnt][0] = del_time1;
+    save_array[save_cnt][1] = del_time2;
+    save_array[save_cnt][2] = max_time;
+    save_array[save_cnt][3] = PongBotQ.cnt_HS;
+    save_array[save_cnt][4] = PongBotQ.target_joint_pos_HS[2];
+    save_array[save_cnt][5] = PongBotQ.target_joint_vel_HS[2];
+
+
 
     if (save_cnt < SAVE_COUNT - 1)
         save_cnt++;
@@ -701,24 +777,24 @@ bool ecat_init(void) {
             for (int k = 0; k < NUM_OF_ELMO; ++k) {
                 if (ec_slavecount >= 1) {
                     //printf("Re mapping for ELMO...\n");
-//                    ob3 = 0;
-//                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
-//                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
-//
-//                    ob2 = 0x1605;
-//                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-//                    ob3 = 1;
-//                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
-//
-//                    ob2 = 0x1A03;
-//                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-//                    ob2 = 0x1A1E;
-//                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x02, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
-//                    ob3 = 2;
-//                    //ob3=1;
-//                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
-                    
-                     wkc += RS3_write8(k + 1, 0x1c12, 0x0000, 0x00); //(slave, index, subindex, value)
+                    //                    ob3 = 0;
+                    //                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+                    //                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+                    //
+                    //                    ob2 = 0x1605;
+                    //                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
+                    //                    ob3 = 1;
+                    //                    wkc_count += ec_SDOwrite(k + 1, 0x1c12, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+                    //
+                    //                    ob2 = 0x1A03;
+                    //                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x01, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
+                    //                    ob2 = 0x1A1E;
+                    //                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x02, FALSE, sizeof (ob2), &ob2, EC_TIMEOUTRXM);
+                    //                    ob3 = 2;
+                    //                    //ob3=1;
+                    //                    wkc_count += ec_SDOwrite(k + 1, 0x1c13, 0x00, FALSE, sizeof (ob3), &ob3, EC_TIMEOUTRXM);
+
+                    wkc += RS3_write8(k + 1, 0x1c12, 0x0000, 0x00); //(slave, index, subindex, value)
                     wkc += RS3_write8(k + 1, 0x1608, 0x0000, 0x00);
 
                     wkc += RS3_write32(k + 1, 0x1608, 0x0001, 0x607A0020);
@@ -747,7 +823,7 @@ bool ecat_init(void) {
                     wkc += RS3_write8(k + 1, 0x1a07, 0x0000, 0x05);
                     wkc += RS3_write16(k + 1, 0x1c13, 0x0001, 0x1a07); //  (row,PDO) 
                     wkc += RS3_write8(k + 1, 0x1c13, 0x0000, 0x01); //  (index,Row)
-                    
+
                 }
 
             }

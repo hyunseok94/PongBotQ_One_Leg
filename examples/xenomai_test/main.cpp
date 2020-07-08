@@ -8,7 +8,7 @@
 
 //Save
 #define SAVE_LENGTH 8    //The number of data
-#define SAVE_COUNT 10000 //Save Time = 10000[ms]
+#define SAVE_COUNT 3600000 //Save Time = 10000[ms]
 unsigned int save_cnt = 0;
 double save_array[SAVE_COUNT][SAVE_LENGTH];
 long Thread_time_upper;

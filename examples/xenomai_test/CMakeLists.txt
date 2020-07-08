@@ -41,7 +41,7 @@ include_directories(
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # To specify an executable target that must be buillt.
-add_executable(xenomai_test.exe main.cpp)
+add_executable(xenomai_test_exe main.cpp)
 
 
 

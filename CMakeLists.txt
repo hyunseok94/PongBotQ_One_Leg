@@ -4,8 +4,7 @@ project(elmo_pkgs)
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
 
-LIST(APPEND CMAKE_MODULE_PATH
-${PROJECT_SOURCE_DIR})
+LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
 
 find_package(RBDL REQUIRED)
 find_package(Eigen3 3.0.0 REQUIRED)
@@ -16,6 +15,8 @@ find_package(catkin REQUIRED COMPONENTS
  std_msgs
  soem
  message_generation
+ geometry_msgs
+ tf
 )
 
 
@@ -53,12 +54,11 @@ SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--wrap=main -Wl,--no-a
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # To specify an executable target that must be buillt.
-add_executable(elmo_pkgs.exe src/main.cpp src/servo.c src/ecat_dc.c src/CRobot.cpp)
+add_executable(elmo_pkgs_exe src/main.cpp src/servo.c src/ecat_dc.c src/CRobot.cpp)
 
 # To specify which libraries an executable target links against.
-target_link_libraries(elmo_pkgs.exe ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
+target_link_libraries(elmo_pkgs_exe ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
 
 add_subdirectory(examples/xenomai_test)
 add_subdirectory(examples/soem_test)
-
 

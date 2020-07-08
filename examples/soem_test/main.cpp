@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <time.h>
 
 // **********Xenomai libraries*********//
 #include <alchemy/task.h>
@@ -15,7 +16,9 @@
 #include "pdo_def.h"
 #include "ecat_dc.h"
 
-#define NUM_OF_ELMO 3
+
+
+#define NUM_OF_ELMO 1
 //#define _USE_DC
 //Save
 #define SAVE_LENGTH 8    //The number of data
@@ -68,17 +71,22 @@ UINT16 maxTorque = 3500;
 RTIME now1, previous1;
 RTIME now2, previous2;
 
-RTIME A, B, C, D, E, F, G, H;
+RTIME A, B, C, D, E;
 double interval1;
 double interval2;
 double interval3;
+double interval4;
+double interval5;
 
 static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value);
 static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value);
 static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value);
 
-void demo(void *arg) {
+float time_clock;
 
+
+void demo(void *arg) {
+    struct timespec begin2, end2;
 
     if (ecat_init() == false) {
         ethercat_run = 0;
@@ -132,26 +140,35 @@ void demo(void *arg) {
 
     while (ethercat_run) {
 
+        previous2 = now2;
+
+        A = rt_timer_read();
 #ifdef _USE_DC     
         rt_ts += (RTIME) (cycle_ns + toff);
         rt_task_sleep_until(rt_ts);
 #else  
         rt_task_wait_period(NULL);
+         B = rt_timer_read();
 #endif
         previous1 = rt_timer_read();
-        previous2 = now2;
+        interval1 = (double) (B - A) / 1000000;
+        
 
         ec_send_processdata();
-        A = rt_timer_read();
-        interval1 = (double) (A - previous1) / 1000000;
+        clock_gettime(CLOCK_MONOTONIC, &begin2);
+        C = rt_timer_read();
+        interval2 = (double) (C - B) / 1000000;
+
         wkc = ec_receive_processdata(EC_TIMEOUTRET);
-        std::cout << "EC=" << EC_TIMEOUTRET << std::endl;
-        std::cout << "wk=" << wkc << std::endl;
-        if (wkc < 3 * (NUM_OF_ELMO)) {
-            recv_fail_cnt++;
-        }
-        B = rt_timer_read();
-        interval2 = (double) (B - A) / 1000000;
+
+        
+        //        if (wkc < 3 * (NUM_OF_ELMO)) {
+        //            recv_fail_cnt++;
+        //        }
+        D = rt_timer_read();
+
+        interval3 = (double) (D - C) / 1000000;
+
 #ifdef _USE_DC    
         cur_dc32 = (uint32_t) (ec_DCtime & 0xffffffff); //use 32-bit only
         if (cur_dc32 > pre_dc32) { //normal case
@@ -187,16 +204,23 @@ void demo(void *arg) {
 
         now1 = rt_timer_read();
         now2 = rt_timer_read();
+        E = rt_timer_read();
 
         Thread_time1 = (double) (now1 - previous1) / 1000000;
         Thread_time2 = (double) (now2 - previous2) / 1000000;
-        interval3 = (double) (now1 - B) / 1000000;
-        //previous = now;
-        printf("Time since last turn: %6f ms / %6f ms\n", Thread_time1, Thread_time2);
+        interval4 = (double) (E - D) / 1000000;
+
+        printf("Time since last turn: AB= %6f ms / BC = %6f ms / CD = %6f ms / DE = %6f ms\n", interval1, interval2, interval3, interval4);
+        //printf("Time since last turn: %6f ms / %6f ms \n", Thread_time1, Thread_time2);
+
+        clock_gettime(CLOCK_MONOTONIC, &end2);
+
         DataSave();
+        time_clock = (float) (end2.tv_sec - begin2.tv_sec)+(end2.tv_nsec - begin2.tv_nsec) / 1000000000.0;
+        //printf("Time2 : %6f ms \n", time_clock * 1000.0);
     }
 
-    //    rt_task_sleep(cycle_ns);
+    //   rt_task_sleep(cycle_ns);
 #ifdef _USE_DC
     for (int i = 0; i < NUM_OF_ELMO; ++i)
         ec_dcsync0(i + 1, FALSE, 0, 0); // SYNC0,1 on slave 1
@@ -249,10 +273,10 @@ int main(int argc, char* argv[]) {
 void DataSave(void) {
     save_array[save_cnt][0] = Thread_time1;
     save_array[save_cnt][1] = Thread_time2;
+    save_array[save_cnt][2] = now2;
+    save_array[save_cnt][3] = previous2;
 
-    save_array[save_cnt][2] = interval1;
-    save_array[save_cnt][3] = interval2;
-    save_array[save_cnt][4] = interval3;
+    //save_array[save_cnt][4] = interval3;
 
     if (save_cnt < SAVE_COUNT - 1)
         save_cnt++;
@@ -324,7 +348,7 @@ bool ecat_init(void) {
                     wkc += RS3_write32(k + 1, 0x1a07, 0x0004, 0x60410010);
                     wkc += RS3_write32(k + 1, 0x1a07, 0x0005, 0x20a00020);
                     wkc += RS3_write8(k + 1, 0x1a07, 0x0000, 0x05);
-                    
+
                     wkc += RS3_write16(k + 1, 0x1c13, 0x0001, 0x1a07); //  (row,PDO) 
                     wkc += RS3_write8(k + 1, 0x1c13, 0x0000, 0x01); //  (index,Row)
 

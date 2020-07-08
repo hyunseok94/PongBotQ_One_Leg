@@ -51,7 +51,7 @@ message(${ELMO_PKGS_DIR})
 message(${PROJECT_SOURCE_DIR})
 message(${CMAKE_CURRENT_SOURCE_DIR})
 
-add_executable(soem_test.exe main.cpp ${ELMO_PKGS_DIR}/src/servo.c ${ELMO_PKGS_DIR}/src/ecat_dc.c)
+add_executable(soem_test_exe main.cpp ${ELMO_PKGS_DIR}/src/servo.c ${ELMO_PKGS_DIR}/src/ecat_dc.c)
 
-target_link_libraries(soem_test.exe ${catkin_LIBRARIES})
+target_link_libraries(soem_test_exe ${catkin_LIBRARIES})
 
