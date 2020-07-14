@@ -201,9 +201,9 @@ void CRobot::Cycle_Test_Pos_Traj_HS(void){
     if (cnt_HS == 0) {
         cycle_time_HS = 3.0;
         alpha=10*D2R;
-        goal_joint_pos_HS << 0.0, 0.0, actual_joint_pos_HS(2)+alpha;
+        goal_joint_pos_HS << 0.0, 0.0, target_joint_pos_HS(2)+alpha;
                 
-        target_joint_pos_HS = actual_joint_pos_HS;
+        //target_joint_pos_HS = actual_joint_pos_HS;
         init_joint_pos_HS = target_joint_pos_HS;
         target_joint_vel_HS << 0, 0, 0;
         cnt_HS++;
@@ -220,7 +220,7 @@ void CRobot::Cycle_Test_Pos_Traj_HS(void){
            cnt_HS=1; 
         }
         else{
-           target_joint_pos_HS = goal_joint_pos_HS;
+           target_joint_pos_HS = init_joint_pos_HS;
            target_joint_vel_HS << 0, 0, 0;
         }
     }

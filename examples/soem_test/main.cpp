@@ -254,6 +254,7 @@ void demo(void *arg) {
 
 void catch_signal(int sig) {
     FileSave();
+    printf("ABC");
 }
 
 int main(int argc, char* argv[]) {

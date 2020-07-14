@@ -15,6 +15,7 @@
 // **********Basic libraries*********//
 #include <sys/mman.h>
 #include <signal.h>
+#include <unistd.h>
 #include <time.h>
 #include <iostream>
 #include <stdio.h>
@@ -89,7 +90,8 @@ using namespace RigidBodyDynamics::Math;
 
 //*************** 1. Variables ****************/
 // Ethercat
-char ecat_ifname[32] = "enp5s0";
+//char ecat_ifname[32] = "enp5s0";
+char ecat_ifname[32] = "rteth0";
 ELMO_Drive_pt ELMO_drive_pt[NUM_OF_ELMO];
 bool needlf;
 bool inOP;
@@ -124,7 +126,7 @@ UINT16 maxTorque = 3500;
 //Save
 #define SAVE_LENGTH 8    //The number of data
 //#define SAVE_COUNT 3600000 //Save Time = 3600000[ms]=3600[s]
-#define SAVE_COUNT 100000 //Save Time = 3600000[ms]=3600[s]
+#define SAVE_COUNT 3600000 //Save Time = 3600000[ms]=3600[s]
 unsigned int save_cnt = 0;
 double save_array[SAVE_COUNT][SAVE_LENGTH];
 
@@ -141,7 +143,7 @@ double Thread_time = 0.0;
 RT_TASK RT_task1;
 RT_TASK RT_task2;
 RT_TASK RT_task3;
-RT_MUTEX mutex_desc; //mutex
+//RT_MUTEX mutex_desc; //mutex
 RTIME now1, previous1; // Ethercat time
 RTIME now2, previous2; // Thread 1 cycle time
 RTIME now3, previous3; // Thread 2 cycle time
@@ -190,18 +192,16 @@ static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value);
 static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value);
 static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value);
 
-int main(int argc, char *argv[]) {
-
-    signal(SIGTERM, catch_signal);
-    signal(SIGINT, catch_signal);
-
-    mlockall(MCL_CURRENT | MCL_FUTURE);
+int main(int argc, char* argv[]) {
 
     printf(" ROS Setting ...\n");
     ros::init(argc, argv, "elmo_pkgs");
     ros::NodeHandle nh;
-    ros::Rate loop_rate(1000);
-        
+    
+    signal(SIGINT, catch_signal);
+    signal(SIGTERM, catch_signal); 
+    mlockall(MCL_CURRENT | MCL_FUTURE);
+ 
     S_Mode = nh.subscribe("Mode", 1, Callback1);
     S_Stop = nh.subscribe("STOP", 1, Callback2);
     P_data = nh.advertise<std_msgs::Float64MultiArray>("ROS_DATA", 1);
@@ -209,8 +209,7 @@ int main(int argc, char *argv[]) {
     
     m_data.data.resize(10);
     m_joint_states.name.resize(3);
-    m_joint_states.position.resize(3);
-       
+    m_joint_states.position.resize(3); 
     sleep(1);
 
     printf(" Init main ...\n");
@@ -223,7 +222,6 @@ int main(int argc, char *argv[]) {
     // Initial Setting
     printf(" Load Prams...\n");
     Load();
-
 
     // Thread Setting Start
     printf("Create Thread ...\n");
@@ -238,13 +236,15 @@ int main(int argc, char *argv[]) {
     rt_task_start(&RT_task1, &motion_task, NULL);
     rt_task_start(&RT_task2, &print_task, NULL);
     // Thread Setting End
-
-
-    while (ros::ok()) {
+    
+    ros::Rate loop_rate(1000);
+    while(ros::ok()){
         ROSMsgPublish();
+        
         ros::spinOnce();
+        loop_rate.sleep();
     }
-    FileSave();
+    
     return 0;
 }
 
@@ -516,36 +516,6 @@ void print_task(void* arg) {
                 rt_printf("Cart_P_gain=%3f / %3f / %3f \n", PongBotQ.kp_EP_HS[0], PongBotQ.kp_EP_HS[1], PongBotQ.kp_EP_HS[2]);
                 rt_printf("Cart_D_gain=%3f / %3f / %3f \n", PongBotQ.kd_EP_HS[0], PongBotQ.kd_EP_HS[1], PongBotQ.kd_EP_HS[2]);
                 rt_printf("_________________________________________\n");
-                //                std::cout<<"Current="<<PongBotQ.Tor2Cur(PongBotQ.joint[0].torque, PongBotQ.Kt[0], PongBotQ.Gear[0], PongBotQ.ratedCur[0])<<std::endl;
-                //                std::cout<<"Current="<<PongBotQ.Tor2Cur(PongBotQ.joint[1].torque, PongBotQ.Kt[1], PongBotQ.Gear[1], PongBotQ.ratedCur[1])<<std::endl;
-                //                std::cout<<"Current="<<PongBotQ.Tor2Cur(PongBotQ.joint[2].torque, PongBotQ.Kt[2], PongBotQ.Gear[2], PongBotQ.ratedCur[2])<<std::endl;
-                //                std::cout<<"________________"<<std::endl;
-                //                std::cout<<"J_HS"<<PongBotQ.J_HS<<std::endl;
-                //                std::cout<<"________________"<<std::endl;
-                //                std::cout<<"J_A_EP"<<PongBotQ.J_A_EP<<std::endl;
-                //                std::cout<<"________________"<<std::endl;
-                //ELMO Status
-
-                //                printf("actual_x=%3f[m]\n", actual_EP_pos_local_HS(0));
-                //                printf("actual_y=%3f[m]\n", actual_EP_pos_local_HS(1));
-                //                printf("actual_z=%3f[m]\n", actual_EP_pos_local_HS(2));
-                //                printf("_______________________________________
-
-                //                rt_printf("Thread_time : %ld.%06ld ms\n", (long) (now - previous) / 1000000, (long) (now - previous) % 1000000);
-
-
-                // printf("Thread_time=%6f [s]\n", Thread_time);____________\n");
-                //                                printf("init_x=%3f[m]\n", init_EP_pos_HS(0));
-                //                                printf("init_y=%3f[m]\n", init_EP_pos_HS(1));
-                //                                printf("init_z=%3f[m]\n", init_EP_pos_HS(2));
-                //                                printf("___________________________________________________\n");
-                //                                printf("goal_x=%3f[m]\n", goal_EP_pos_HS(0));
-                //                                printf("goal_y=%3f[m]\n", goal_EP_pos_HS(1));
-                //                                printf("goal_z=%3f[m]\n", goal_EP_pos_HS(2));
-                //printf("___________________________________________________\n");
-                //                printf("target_x=%3f[m]\n", target_EP_pos_HS(0));
-                //                printf("target_y=%3f[m]\n", target_EP_pos_HS(1));
-                //                printf("target_z=%3f[m]\n", target_EP_pos_HS(2));
                 rt_printf("----------------------------------------------------\n");
             }
         }
@@ -556,15 +526,18 @@ void print_task(void* arg) {
 }
 
 void catch_signal(int sig) {
+    
+    printf("Program END...\n");
+    
     FileSave();
-    //printf("Program END...\n");
+    
     rt_task_delete(&RT_task1);
     rt_task_delete(&RT_task2);
-    //rt_mutex_delete(&mutex_desc);
+    
+    //sleep(2); //after 2[s] Program end
+    //exit(1);
+    
     ros::shutdown();
-
-    sleep(2); //after 2[s] Program end
-    exit(1);
 }
 
 void ServoOn(void) {
@@ -673,7 +646,8 @@ void ROSMsgPublish(void) {
     //tf::TransformBroadcaster broadcaster;
     
     m_data.data[0] = del_time1;
-    //m_data.data[0] = PongBotQ.actual_joint_pos_HS[0] * R2D;
+    m_data.data[1] = PongBotQ.target_joint_pos_HS[2] * R2D;
+    m_data.data[2] = PongBotQ.target_joint_vel_HS[2];
     //    m_data.data[1] = PongBotQ.actual_joint_pos_HS[1] * R2D;
     //    m_data.data[2] = PongBotQ.actual_joint_pos_HS[2] * R2D;
     //    m_data.data[3] = PongBotQ.target_joint_pos_HS[0] * R2D;
@@ -684,9 +658,12 @@ void ROSMsgPublish(void) {
     m_joint_states.name[0] = "HR_JOINT";
     m_joint_states.name[1] = "HP_JOINT";
     m_joint_states.name[2] = "KN_JOINT";
+//    m_joint_states.position[0] = PongBotQ.actual_joint_pos_HS[0];
+//    m_joint_states.position[1] = PongBotQ.actual_joint_pos_HS[1];
+//    m_joint_states.position[2] = PongBotQ.actual_joint_pos_HS[2];
     m_joint_states.position[0] = PongBotQ.actual_joint_pos_HS[0];
     m_joint_states.position[1] = PongBotQ.actual_joint_pos_HS[1];
-    m_joint_states.position[2] = PongBotQ.actual_joint_pos_HS[2];
+    m_joint_states.position[2] = PongBotQ.target_joint_pos_HS[2];
     
 //    odom_trans.header.stamp = ros::Time::now();
 //    odom_trans.header.frame_id = "odom";
@@ -720,20 +697,18 @@ void DataSave(void) {
     save_array[save_cnt][0] = del_time1;
     save_array[save_cnt][1] = del_time2;
     save_array[save_cnt][2] = max_time;
-    save_array[save_cnt][3] = PongBotQ.cnt_HS;
-    save_array[save_cnt][4] = PongBotQ.target_joint_pos_HS[2];
-    save_array[save_cnt][5] = PongBotQ.target_joint_vel_HS[2];
+   
 
-
-
-    if (save_cnt < SAVE_COUNT - 1)
+    if (save_cnt < SAVE_COUNT - 1){
         save_cnt++;
+    }
 }
 
 void FileSave(void) {
     FILE *fp;
 
     fp = fopen("HSData.txt", "w");
+    
     for (int j = 0; j <= SAVE_COUNT - 1; ++j) {
         for (int i = 0; i <= SAVE_LENGTH - 1; ++i) {
             fprintf(fp, "%f\t", save_array[j][i]);
