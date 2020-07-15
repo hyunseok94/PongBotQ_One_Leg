@@ -1,15 +1,33 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(soem_test)
 
+SET(ELMO_PKGS_DIR ${CMAKE_SOURCE_DIR}/PongBotQ_One_Leg)
+
+SET (SRC_FILES 
+ main.cpp
+ ${ELMO_PKGS_DIR}/src/servo.c
+ ${ELMO_PKGS_DIR}/src/ecat_dc.c
+ ${ELMO_PKGS_DIR}/include/ethercat/osal/osal.c
+ ${ELMO_PKGS_DIR}/include/ethercat/oshw/nicdrv.c
+ ${ELMO_PKGS_DIR}/include/ethercat/oshw/oshw.c
+ ${ELMO_PKGS_DIR}/include/ethercat/soem/ethercatbase.c
+ ${ELMO_PKGS_DIR}/include/ethercat/soem/ethercatcoe.c
+ ${ELMO_PKGS_DIR}/include/ethercat/soem/ethercatconfig.c
+ ${ELMO_PKGS_DIR}/include/ethercat/soem/ethercatdc.c
+ ${ELMO_PKGS_DIR}/include/ethercat/soem/ethercatfoe.c
+ ${ELMO_PKGS_DIR}/include/ethercat/soem/ethercatmain.c
+ ${ELMO_PKGS_DIR}/include/ethercat/soem/ethercatprint.c
+ ${ELMO_PKGS_DIR}/include/ethercat/soem/ethercatsoe.c
+)
+
 LIST(APPEND CMAKE_MODULE_PATH
 ${PROJECT_SOURCE_DIR}
 )
 
-SET(ELMO_PKGS_DIR ${CMAKE_SOURCE_DIR}/PongBotQ_One_Leg)
+
 
 # appended to the catkin_variables(catkin_INCLUDE_DIRS contains the include paths for this lists)
 find_package(catkin REQUIRED COMPONENTS 
- soem
  roscpp
  std_msgs
  message_generation
@@ -31,6 +49,14 @@ find_package(catkin REQUIRED COMPONENTS
 include_directories(
  include
  ${catkin_INCLUDE_DIRS}
+ ${ELMO_PKGS_DIR}/include/ethercat/osal
+ ${ELMO_PKGS_DIR}/include/ethercat/oshw
+ ${ELMO_PKGS_DIR}/include/ethercat/soem
+ /usr/xenomai/include/cobalt
+ /usr/xenomai/include/
+ /usr/xenomai/include/alchemy
+ /usr/xenomai/lib
+ /usr/xenomai/
 )
 
 # Xenomai setting
@@ -46,12 +72,12 @@ include_directories(
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # To specify an executable target that must be buillt.
-message("A")
-message(${ELMO_PKGS_DIR})
-message(${PROJECT_SOURCE_DIR})
-message(${CMAKE_CURRENT_SOURCE_DIR})
+#message("A")
+#message(${ELMO_PKGS_DIR})
+#message(${PROJECT_SOURCE_DIR})
+#message(${CMAKE_CURRENT_SOURCE_DIR})
 
-add_executable(soem_test_exe main.cpp ${ELMO_PKGS_DIR}/src/servo.c ${ELMO_PKGS_DIR}/src/ecat_dc.c)
+add_executable(soem_test_exe ${SRC_FILES})
 
 target_link_libraries(soem_test_exe ${catkin_LIBRARIES})
 

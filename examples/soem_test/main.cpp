@@ -16,8 +16,6 @@
 #include "pdo_def.h"
 #include "ecat_dc.h"
 
-
-
 #define NUM_OF_ELMO 1
 //#define _USE_DC
 //Save
@@ -53,8 +51,8 @@ unsigned int cycle_ns = 1000000; // Control Cycle 1[ms]
 
 int recv_fail_cnt = 0;
 
-//char ecat_ifname[32] = "rteth0";
-char ecat_ifname[32] = "enp5s0";
+char ecat_ifname[32] = "rteth0";
+//char ecat_ifname[32] = "enp5s0";
 //char ecat_ifname[32] = "eno1";
 //char ecat_ifname[32] = "eth1";
 ELMO_Drive_pt ELMO_drive_pt[NUM_OF_ELMO];

@@ -1,6 +1,24 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(elmo_pkgs)
 
+SET (SRC_FILES 
+ src/main.cpp
+ src/servo.c
+ src/ecat_dc.c
+ src/CRobot.cpp
+ include/ethercat/osal/osal.c
+ include/ethercat/oshw/nicdrv.c
+ include/ethercat/oshw/oshw.c
+ include/ethercat/soem/ethercatbase.c
+ include/ethercat/soem/ethercatcoe.c
+ include/ethercat/soem/ethercatconfig.c
+ include/ethercat/soem/ethercatdc.c
+ include/ethercat/soem/ethercatfoe.c
+ include/ethercat/soem/ethercatmain.c
+ include/ethercat/soem/ethercatprint.c
+ include/ethercat/soem/ethercatsoe.c
+)
+
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
 
@@ -13,12 +31,11 @@ find_package(Eigen3 3.0.0 REQUIRED)
 find_package(catkin REQUIRED COMPONENTS 
  roscpp
  std_msgs
- soem
+ #soem
  message_generation
  geometry_msgs
  tf
 )
-
 
 catkin_package(
   INCLUDE_DIRS include   # "include" folder 
@@ -37,28 +54,32 @@ include_directories(
  ${catkin_INCLUDE_DIRS}
  ${RBDL_INCLUDE_DIR}
  ${EIGEN3_INCLUDE_DIR}
+ include/ethercat/osal
+ include/ethercat/oshw
+ include/ethercat/soem
+ /usr/xenomai/include/cobalt
+ /usr/xenomai/include/
+ /usr/xenomai/include/alchemy
+ /usr/xenomai/lib
+ /usr/xenomai/
 )
 
 # Xenomai setting
-execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --cflags OUTPUT_VARIABLE XENO_CFLAGS)
-execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --ldflags OUTPUT_VARIABLE XENO_LDFLAGS)
+execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -lefence ${XENO_CFLAGS}")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS}")
-
-string(STRIP ${CMAKE_CXX_FLAGS} CMAKE_CXX_FLAGS)
-SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--wrap=main -Wl,--no-as-needed -Wl,@/usr/xenomai/lib/modechk.wrappers -lalchemy -lcopperplate /usr/xenomai/lib/xenomai/bootstrap.o -Wl,--dynamic-list=/usr/xenomai/lib/dynlist.ld -L/usr/xenomai/lib -lcobalt -lmodechk -lpthread -lrt")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
 ## Xenomai Setting end
 
 # To Set executable file's location to ${PROJECT_SOURCE_DIR}/bin.
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # To specify an executable target that must be buillt.
-add_executable(elmo_pkgs_exe src/main.cpp src/servo.c src/ecat_dc.c src/CRobot.cpp)
+add_executable(elmo_pkgs_exe ${SRC_FILES})
 
 # To specify which libraries an executable target links against.
 target_link_libraries(elmo_pkgs_exe ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
-
-add_subdirectory(examples/xenomai_test)
-add_subdirectory(examples/soem_test)
+#examples
+#add_subdirectory(examples/xenomai_test)
+#add_subdirectory(examples/soem_test)
 
