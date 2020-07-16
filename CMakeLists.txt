@@ -3,9 +3,10 @@ project(elmo_pkgs)
 
 SET (SRC_FILES 
  src/main.cpp
- src/servo.c
- src/ecat_dc.c
  src/CRobot.cpp
+ include/ethercat/etc/servo.c
+ include/ethercat/etc/ecat_dc.c
+ include/ethercat/etc/slave_info.c
  include/ethercat/osal/osal.c
  include/ethercat/oshw/nicdrv.c
  include/ethercat/oshw/oshw.c
@@ -57,6 +58,7 @@ include_directories(
  include/ethercat/osal
  include/ethercat/oshw
  include/ethercat/soem
+ include/ethercat/etc
  /usr/xenomai/include/cobalt
  /usr/xenomai/include/
  /usr/xenomai/include/alchemy
