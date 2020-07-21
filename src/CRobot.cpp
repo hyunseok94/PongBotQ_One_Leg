@@ -45,8 +45,8 @@ INT32 CRobot::Count_tf(int _Ratio, INT32 _Count_in) {
 }
 
 INT16 CRobot::Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur) {
-    INT16 inputCurrent = (OutputTorque /_Gear)/_Kt /_ratedCur * 1000;
-    
+    INT16 inputCurrent = (OutputTorque / _Gear) / _Kt / _ratedCur * 1000;
+
     return inputCurrent;
 }
 
@@ -130,13 +130,13 @@ void CRobot::ComputeTorqueControl(void) {
     Cartesian_Controller();
     Controller_Change();
 
-//    CTC_Torque = Joint_Controller_HS + C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
+    //    CTC_Torque = Joint_Controller_HS + C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
     //CTC_Torque = Joint_Controller_HS - J_A.transpose() * (Cart_Controller_HS);
-    
+
     //CTC_Torque = Joint_Controller_HS;
     //CTC_Torque = G_term + C_term;
     //CTC_Torque = Joint_Controller_HS + G_term + C_term;
-    
+
     //CTC_Torque = C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
     //CTC_Torque = G_term;
     //CTC_Torque = C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
@@ -197,33 +197,157 @@ void CRobot::Home_Pos_Traj_HS(void) {
     target_joint_vel_HS = J_A_EP.inverse() * target_EP_vel_HS;
 }
 
-void CRobot::Cycle_Test_Pos_Traj_HS(void){
+void CRobot::Cycle_Test_Pos_Traj_HS(void) {
     if (cnt_HS == 0) {
         cycle_time_HS = 3.0;
-        alpha=10*D2R;
-        goal_joint_pos_HS << 0.0, 0.0, target_joint_pos_HS(2)+alpha;
-                
+        alpha = 10 * D2R;
+        goal_joint_pos_HS << 0.0, 0.0, target_joint_pos_HS(2) + alpha;
+
         //target_joint_pos_HS = actual_joint_pos_HS;
         init_joint_pos_HS = target_joint_pos_HS;
         target_joint_vel_HS << 0, 0, 0;
         cnt_HS++;
-    }
-    else if (cnt_HS < (unsigned int) (cycle_time_HS / dt)) {
+    } else if (cnt_HS < (unsigned int) (cycle_time_HS / dt)) {
         for (int i = 0; i < NUM_OF_ELMO; ++i) {
-            target_joint_pos_HS[i] = init_joint_pos_HS[i]+(goal_joint_pos_HS[i] - init_joint_pos_HS[i]) / 2.0 * (1 - cos(2*PI / cycle_time_HS * cnt_HS * dt));
-            target_joint_vel_HS[i] = (goal_joint_pos_HS[i] - init_joint_pos_HS[i]) / 2.0 * (2.0 * PI) / cycle_time_HS * sin(2*PI / cycle_time_HS * cnt_HS * dt);
+            target_joint_pos_HS[i] = init_joint_pos_HS[i]+(goal_joint_pos_HS[i] - init_joint_pos_HS[i]) / 2.0 * (1 - cos(2 * PI / cycle_time_HS * cnt_HS * dt));
+            target_joint_vel_HS[i] = (goal_joint_pos_HS[i] - init_joint_pos_HS[i]) / 2.0 * (2.0 * PI) / cycle_time_HS * sin(2 * PI / cycle_time_HS * cnt_HS * dt);
         }
         cnt_HS++;
-    }
-    else{
-        if(stop_flag==false){
-           cnt_HS=1; 
-        }
-        else{
-           target_joint_pos_HS = init_joint_pos_HS;
-           target_joint_vel_HS << 0, 0, 0;
+    } else {
+        if (stop_flag == false) {
+            cnt_HS = 1;
+        } else {
+            target_joint_pos_HS = init_joint_pos_HS;
+            target_joint_vel_HS << 0, 0, 0;
         }
     }
+}
+
+void CRobot::Joystick_Pos_Traj_HS(void) {
+    double pos_limit_x_u = 0.25;
+    double pos_limit_x_l = -0.20;
+    double pos_limit_y_u = 0.25;
+    double pos_limit_y_l = -0.03;
+    double pos_limit_z_u = -0.3;
+    double pos_limit_z_l = -0.45;
+//    double lamda = 0.8;
+    double lamda = 0.5;
+    VectorNd tmp1_target_EP_pos_HS = VectorNd::Zero(3);
+
+    if (JoyMode == JOYMODE_HOME) {
+        if (cnt_HS == 0) {
+            cycle_time_HS = 3.0;
+            init_EP_pos_HS = actual_EP_pos_local_HS;
+            goal_EP_pos_HS << 0.0, 0.105, -0.45;
+            target_EP_pos_HS = init_EP_pos_HS;
+            target_EP_vel_HS << 0, 0, 0;
+            cnt_HS++;
+
+        } else if (cnt_HS < (unsigned int) (cycle_time_HS / dt)) {
+            for (int i = 0; i < NUM_OF_ELMO; ++i) {
+                target_EP_pos_HS[i] = init_EP_pos_HS[i]+(goal_EP_pos_HS[i] - init_EP_pos_HS[i]) / 2.0 * (1 - cos(PI / cycle_time_HS * cnt_HS * dt));
+                target_EP_vel_HS[i] = (goal_EP_pos_HS[i] - init_EP_pos_HS[i]) / 2.0 * PI / cycle_time_HS * sin(PI / cycle_time_HS * cnt_HS * dt);
+            }
+            cnt_HS++;
+        } else {
+            target_EP_pos_HS = goal_EP_pos_HS;
+            target_EP_vel_HS << 0, 0, 0;
+        }
+    }
+    else if (JoyMode == JOYMODE_MOVE || JoyMode == JOYMODE_WALK) {
+        tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0] + lamda * joy_vel_x*dt;
+        tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1] + lamda * joy_vel_y*dt;
+
+        if ((tmp1_target_EP_pos_HS[0]) > pos_limit_x_u || pos_limit_x_l > (tmp1_target_EP_pos_HS[0])) {
+            joy_vel_x = 0.0;
+            tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0];
+        } else {
+            tmp2_target_EP_pos_HS[0] = tmp1_target_EP_pos_HS[0];
+        }
+        if ((tmp1_target_EP_pos_HS[1]) > pos_limit_y_u || pos_limit_y_l > (tmp1_target_EP_pos_HS[1])) {
+            joy_vel_y = 0.0;
+            tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1];
+        } else {
+            tmp2_target_EP_pos_HS[1] = tmp1_target_EP_pos_HS[1];
+        }
+            target_EP_pos_HS[0] = tmp2_target_EP_pos_HS[0];
+            target_EP_pos_HS[1] = tmp2_target_EP_pos_HS[1];
+
+////////////////////////////////////////////////////////////////////////////////////////////////////            
+        if (JoyMode == JOYMODE_MOVE) {
+            tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2] + lamda * joy_vel_z*dt;
+            if ((tmp1_target_EP_pos_HS[2]) > pos_limit_z_u || pos_limit_z_l > (tmp1_target_EP_pos_HS[2])) {
+                joy_vel_z = 0.0;
+                tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2];
+            } else {
+                tmp2_target_EP_pos_HS[2] = tmp1_target_EP_pos_HS[2];
+            }
+            target_EP_pos_HS[2] = tmp2_target_EP_pos_HS[2];
+        } 
+        else if (JoyMode == JOYMODE_WALK) {
+            walk_time=cnt_HS*dt;
+
+            if (cnt_HS == 0) {
+                init_EP_pos_HS[2] = target_EP_pos_HS[2];
+                goal_EP_pos_HS[2] = init_EP_pos_HS[2] + foot_height_HS;
+                target_EP_pos_HS[2] = init_EP_pos_HS[2];
+                SF_EP_Traj_Gen_HS(step_time_HS, init_EP_pos_HS, goal_EP_pos_HS);
+               
+                cnt_HS++;
+            } else if (cnt_HS < tsp_cnt_HS) {
+                t2=walk_time;
+                if (cnt_HS < tsp_cnt_HS / 2) {
+                    t1 = t2;
+                    target_EP_pos_HS[2] = z_up[5] * pow(t1, 5) + z_up[4] * pow(t1, 4) + z_up[3] * pow(t1, 3) + z_up[2] * pow(t1, 2) + z_up[1] * pow(t1, 1) + z_up[0];
+                    target_EP_vel_HS[2] = 5 * z_up[5] * pow(t1, 4) + 4 * z_up[4] * pow(t1, 3) + 3 * z_up[3] * pow(t1, 2) + 2 * z_up[2] * pow(t1, 1) + z_up[1];
+                } else {
+                    t1 = t2 - tsp_time_HS / 2.0;
+                    target_EP_pos_HS[2] = z_down[5] * pow(t1, 5) + z_down[4] * pow(t1, 4) + z_down[3] * pow(t1, 3) + z_down[2] * pow(t1, 2) + z_down[1] * pow(t1, 1) + z_down[0];
+                    target_EP_vel_HS[2] = 5 * z_down[5] * pow(t1, 4) + 4 * z_down[4] * pow(t1, 3) + 3 * z_down[3] * pow(t1, 2) + 2 * z_down[2] * pow(t1, 1) + z_down[1];
+                }
+                cnt_HS++;
+            }
+            else if (cnt_HS < fsp_cnt_HS + (tsp_cnt_HS + fsp_cnt_HS)*3) {
+                target_EP_pos_HS[2] = init_EP_pos_HS[2];
+                target_EP_vel_HS[2] = 0;
+                cnt_HS++;
+            }
+            else {
+                if(walk_stop_flag!=true){
+                   cnt_HS = 1;
+                }
+            }
+        }
+    }
+    target_joint_pos_HS = IK_HS(target_EP_pos_HS);
+    target_joint_vel_HS = J_A_EP.inverse() * target_EP_vel_HS;
+
+
+        //    else if (JoyMode == JOYMODE_MOVE) {
+        //        tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0] + lamda * joy_vel_x*dt;
+        //        tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1] + lamda * joy_vel_y*dt;
+        //        tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2] + lamda * joy_vel_z*dt;
+        //
+        //        if ((tmp1_target_EP_pos_HS[0]) > pos_limit_x_u || pos_limit_x_l > (tmp1_target_EP_pos_HS[0])) {
+        //            joy_vel_x = 0.0;
+        //            tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0];
+        //        } else {
+        //            tmp2_target_EP_pos_HS[0] = tmp1_target_EP_pos_HS[0];
+        //        }
+        //        if ((tmp1_target_EP_pos_HS[1]) > pos_limit_y_u || pos_limit_y_l > (tmp1_target_EP_pos_HS[1])) {
+        //            joy_vel_y = 0.0;
+        //            tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1];
+        //        } else {
+        //            tmp2_target_EP_pos_HS[1] = tmp1_target_EP_pos_HS[1];
+        //        }
+        //        if ((tmp1_target_EP_pos_HS[2]) > pos_limit_z_u || pos_limit_z_l > (tmp1_target_EP_pos_HS[2])) {
+        //            joy_vel_z = 0.0;
+        //            tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2];
+        //        } else {
+        //            tmp2_target_EP_pos_HS[2] = tmp1_target_EP_pos_HS[2];
+        //        }
+        //        target_EP_pos_HS = tmp2_target_EP_pos_HS;
+        //    } 
 }
 
 VectorNd CRobot::FK_HS(VectorNd joint_pos) {
@@ -260,26 +384,26 @@ VectorNd CRobot::IK_HS(VectorNd EP_pos) {
     static double z = 0;
     static double q1_cal = 0;
 
-    //    x = -EP_pos[0];
-    //    y = EP_pos[1];
-    //    z = EP_pos[2];
-    //
-    //    joint_pos[0] = atan2(y , abs(z)) - PI / 2 + acos(L1 / (sqrt(pow(y, 2) + pow(z, 2))));
-    //    joint_pos[1] = -(-atan2(x, sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
-    //    joint_pos[2] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
-
-    //RL_joints
-    x = EP_pos[0];
+    x = -EP_pos[0];
     y = EP_pos[1];
     z = EP_pos[2];
-    if (actual_joint_pos_HS[0] >= 0) {
-        joint_pos[0] = (acos(-z / sqrt(pow(y, 2) + pow(z, 2))) + acos(L1 / sqrt(pow(y, 2) + pow(z, 2))) - PI / 2);
-    } else {
-        joint_pos[0] = -(PI - (acos(-y / sqrt(pow(y, 2) + pow(z, 2))) + acos(L1 / sqrt(pow(y, 2) + pow(z, 2)))));
-    }
-    q1_cal = joint_pos[0];
-    joint_pos[1] = (acos((pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow((y - L1 * cos(q1_cal)), 2) + pow(z - L1 * sin(q1_cal), 2)) / (2 * L2 * sqrt(pow(x, 2) + pow((y - L1 * cos(q1_cal)), 2) + pow((z - L1 * sin(q1_cal)), 2)))) - atan(x / sqrt(pow(y, 2) + pow(z, 2) - pow(L1, 2))));
-    joint_pos[2] = -(acos((pow(x, 2) + pow((y - L1 * cos(q1_cal)), 2) + pow((z - L1 * sin(q1_cal)), 2) - pow(L2, 2) - pow(L3, 2)) / (2 * L2 * L3)));
+
+    joint_pos[0] = atan2(y, abs(z)) - PI / 2 + acos(L1 / (sqrt(pow(y, 2) + pow(z, 2))));
+    joint_pos[1] = -(-atan2(x, sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
+    joint_pos[2] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
+
+    //RL_joints
+    //    x = EP_pos[0];
+    //    y = EP_pos[1];
+    //    z = EP_pos[2];
+    //    if (actual_joint_pos_HS[0] >= 0) {
+    //        joint_pos[0] = (acos(-z / sqrt(pow(y, 2) + pow(z, 2))) + acos(L1 / sqrt(pow(y, 2) + pow(z, 2))) - PI / 2);
+    //    } else {
+    //        joint_pos[0] = -(PI - (acos(-y / sqrt(pow(y, 2) + pow(z, 2))) + acos(L1 / sqrt(pow(y, 2) + pow(z, 2)))));
+    //    }
+    //    q1_cal = joint_pos[0];
+    //    joint_pos[1] = (acos((pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow((y - L1 * cos(q1_cal)), 2) + pow(z - L1 * sin(q1_cal), 2)) / (2 * L2 * sqrt(pow(x, 2) + pow((y - L1 * cos(q1_cal)), 2) + pow((z - L1 * sin(q1_cal)), 2)))) - atan(x / sqrt(pow(y, 2) + pow(z, 2) - pow(L1, 2))));
+    //    joint_pos[2] = -(acos((pow(x, 2) + pow((y - L1 * cos(q1_cal)), 2) + pow((z - L1 * sin(q1_cal)), 2) - pow(L2, 2) - pow(L3, 2)) / (2 * L2 * L3)));
 
 
     return joint_pos;
@@ -364,7 +488,6 @@ void CRobot::Controller_Change(void) {
 
     if (Mode_Change_flag == true) {
 
-
         if (cnt_Control_change == 0) {
             target_kp_joint_HS = kp_joint_HS;
             target_kd_joint_HS = kd_joint_HS;
@@ -376,7 +499,7 @@ void CRobot::Controller_Change(void) {
             init_kp_EP_HS = target_kp_EP_HS;
             init_kd_EP_HS = target_kd_EP_HS;
 
-            if (CommandFlag == GOTO_INIT_POS_HS) {
+            if (CommandFlag == GOTO_INIT_POS_HS || CommandFlag == GOTO_JOYSTICK_POS_HS) {
                 Cart_Controller_HS = VectorNd::Zero(9);
                 goal_kp_joint_HS = abs_kp_joint_HS;
                 goal_kd_joint_HS = abs_kd_joint_HS;
@@ -409,4 +532,51 @@ void CRobot::Controller_Change(void) {
         kd_EP_HS = target_kd_EP_HS;
     }
 
+}
+
+void CRobot::SF_EP_Traj_Gen_HS(double travel_time, VectorNd init_EP_pos, VectorNd goal_EP_pos) {
+
+    //******* Z trajectory ********///
+    init_x[0] = init_EP_pos(2);
+    init_x[1] = 0;
+    init_x[2] = 0;
+    //    final_x[0] = init_EP_pos(2) + foot_height_HS;
+    final_x[0] = goal_EP_pos(2);
+    final_x[1] = 0;
+    final_x[2] = 0;
+    coefficient_5thPoly_HS(init_x, final_x, travel_time / 2.0, z_up);
+
+    //    init_x[0] = init_EP_pos(2) + foot_height_HS;
+    init_x[0] = goal_EP_pos(2);
+    init_x[1] = 0;
+    init_x[2] = 0;
+    final_x[0] = init_EP_pos(2);
+    final_x[1] = 0;
+    final_x[2] = 0;
+    coefficient_5thPoly_HS(init_x, final_x, travel_time / 2.0, z_down);
+
+}
+
+void CRobot::coefficient_5thPoly_HS(double *init_x, double *final_x, double tf, double *output) {
+    double temp_t1 = 0;
+    double temp_t2 = tf;
+    //   MatrixXd R(6,1), A(6,6), P(6,1);
+
+    R << init_x[0], final_x[0], init_x[1], final_x[1], init_x[2], final_x[2];
+
+    A << 1, temp_t1, pow(temp_t1, 2), pow(temp_t1, 3), pow(temp_t1, 4), pow(temp_t1, 5),
+            1, temp_t2, pow(temp_t2, 2), pow(temp_t2, 3), pow(temp_t2, 4), pow(temp_t2, 5),
+            0, 1, 2 * pow(temp_t1, 1), 3 * pow(temp_t1, 2), 4 * pow(temp_t1, 3), 5 * pow(temp_t1, 4),
+            0, 1, 2 * pow(temp_t2, 1), 3 * pow(temp_t2, 2), 4 * pow(temp_t2, 3), 5 * pow(temp_t2, 4),
+            0, 0, 2, 6 * pow(temp_t1, 1), 12 * pow(temp_t1, 2), 20 * pow(temp_t1, 3),
+            0, 0, 2, 6 * pow(temp_t2, 1), 12 * pow(temp_t2, 2), 20 * pow(temp_t2, 3);
+
+    P = A.inverse() * R;
+
+    output[0] = P(0, 0);
+    output[1] = P(1, 0);
+    output[2] = P(2, 0);
+    output[3] = P(3, 0);
+    output[4] = P(4, 0);
+    output[5] = P(5, 0);
 }

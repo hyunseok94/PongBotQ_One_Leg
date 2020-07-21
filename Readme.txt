@@ -8,6 +8,8 @@
 < Package Execution Command order >
  - typing the codes on termianl in order
 ___________________________________________________________________________________ 
+cd ~/catkin_ws/src/PongBotQ_One_Leg/RTnet_Setting && sudo sh RT_net_Setting.sh
+___________________________________________________________________________________ 
 Main. execution
 (0) roscore
 (1) cm

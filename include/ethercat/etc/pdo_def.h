@@ -37,10 +37,12 @@ typedef struct PACKED
 typedef struct PACKED
 {
 	INT32	PositionActualValue;		//0x6064 00 20
-	UINT32 DigitalInput;                     //0X60FD 00 20 
+	UINT32  DigitalInput;                     //0X60FD 00 20 
 	INT32	VelocityActualValue;		//0x606C 00 20
 	UINT16	StatusWord;	                //0x6041 00 10
+        INT16   TorqueActualValue;                    //0x6077 00 10
         INT32   AuxiliaryPositionActualValue;   //0x20a0 00 20
+        
 
 }ELMO_DRIVE_TxPDO_t;
 

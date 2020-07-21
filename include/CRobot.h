@@ -20,6 +20,8 @@
 #define AXIS_Pitch 4
 #define AXIS_Yaw   5
 
+#define enumstr(a) (#a)
+
 using Eigen::VectorXd;
 using namespace std;
 using namespace RigidBodyDynamics;
@@ -30,10 +32,18 @@ typedef enum {
     CTRLMODE_INITIALIZE, //1
     CTRLMODE_WALK_READY_HS, //2
     CTRLMODE_CYCLE_TEST_HS, //3
-    CTRLMODE_WALK_HS, //4
-    CTRLMODE_POSTURE_GENERATION_HS, //5
-    CTRLMODE_TEST_HS //6
+    CTRLMODE_JOYSTICK_HS, //4
+    //    CTRLMODE_WALK_HS, //4
+    //    CTRLMODE_POSTURE_GENERATION_HS, //5
+    //    CTRLMODE_TEST_HS //6
 } _CONTROL_MODE;
+
+typedef enum {
+    JOYMODE_NONE = 0,
+    JOYMODE_HOME, //1
+    JOYMODE_MOVE, //2
+    JOYMODE_WALK //3
+} _JOY_MODE;
 
 typedef enum {
     NO_ACT,
@@ -125,7 +135,8 @@ typedef enum {
     GOTO_WALK_POS_HS,
     GOTO_POSTURE_GENERATION_HS,
     GOTO_TEST_POS_HS,
-    GOTO_CYCLE_POS_HS
+    GOTO_CYCLE_POS_HS,
+    GOTO_JOYSTICK_POS_HS
 
 } _COMMAND_FLAG;
 
@@ -248,25 +259,31 @@ public:
     void Init_Pos_Traj_HS(void); // Joint target
     void Home_Pos_Traj_HS(void); // End point target
     void Cycle_Test_Pos_Traj_HS(void);
+    void Joystick_Pos_Traj_HS(void);
     void ComputeTorqueControl(void);
+    void SF_EP_Traj_Gen_HS(double travel_time, VectorNd init_EP_pos, VectorNd goal_EP_pos);
+    void coefficient_5thPoly_HS(double *init_x, double *final_x, double tf, double *output);
     
     //***************************************************************************************************8//
+
 
     bool Encoder_Reset_Flag = true;
     int Gear[NUM_OF_ELMO] = {50, 50, 50};
     //int Gear[NUM_OF_ELMO] = {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50};
     int Ratio[NUM_OF_ELMO] = {1, 1, 1};
-    //int Ratio[NUM_OF_ELMO] = {1, 1, 256, 1, 1, 256, 1, 1, 1, 256, 1, 1, 256};
+    //int Ratio[NUM_OF_ELMO] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
     double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9};
     //double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9, 2.85, 2.85, 8.9, 2.85, 2.85, 2.85, 8.9, 2.85, 2.85, 8.9};
     double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156};
     //double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156, 0.159, 0.159, 0.156, 0.159, 0.159, 0.159, 0.156, 0.159, 0.159, 0.156};
     int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384}; //16384(2^14)
-    //int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384,65536, 65536, 16384,65536,65536, 65536, 16384,65536, 65536, 16384}; //16384(2^14)
+    //int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384, 65536, 65536, 16384,65536,65536, 65536, 16384,65536, 65536, 16384}; //16384(2^14)
 
     int ControlMode = 0;
     int CommandFlag = 0;
+    int ControlMode_print = 0;
     bool Control_mode_flag = false;
+    int JoyMode = 0;
 
     bool Mode_Change_flag = false;
     bool tmp_Mode_Change_flag = false;
@@ -278,7 +295,7 @@ public:
     unsigned int cnt_HS = 0;
 
     unsigned int cnt_Control_change = 0;
-    //    static RigidBodyDynamics::Math::VectorNd abs_kp_joint_HS =(RigidBodyDynamics::Math::VectorNd::Zero(NUM_OF_ELMO)).finished();
+
     VectorNd abs_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
@@ -339,6 +356,8 @@ public:
     VectorNd Cart_Controller_HS = VectorNd::Zero(9);
     VectorNd Joint_Controller_HS = VectorNd::Zero(9);
 
+    VectorNd tmp1_target_EP_pos_HS = VectorNd::Zero(3);
+    VectorNd tmp2_target_EP_pos_HS = VectorNd::Zero(3);
 
     // RBDL 
     BASE base; //* coordinate of Body
@@ -373,9 +392,31 @@ public:
     MatrixNd J_EP = MatrixNd::Zero(3, 9); //# size 3 * qdot_size(=9)
     MatrixNd J_A = MatrixNd::Zero(9, 9);
     MatrixNd J_A_EP = MatrixNd::Zero(3, 3);
-    
-    double alpha=0.0;
+
+    double alpha = 0.0;
     bool stop_flag = false;
+
+    // JoyStick
+    double joy_vel_x = 0.0;
+    double joy_vel_y = 0.0;
+    double joy_vel_z = 0.0;
+
+    //Walking Traj
+    double init_x[3] = {0, 0, 0};
+    double final_x[3] = {0, 0, 0};
+    double foot_height_HS=0.0;
+    double z_up[6];
+    double z_down[6];
+    VectorNd R = VectorNd::Zero(6);
+    VectorNd P = VectorNd::Zero(6);
+    MatrixNd A = MatrixNd::Zero(6, 6);
+    unsigned int tsp_cnt_HS=250;
+    unsigned int fsp_cnt_HS=100;
+    double tsp_time_HS=tsp_cnt_HS*dt;
+    double fsp_time_HS=fsp_cnt_HS*dt;
+    double step_time_HS=tsp_time_HS+fsp_time_HS;
+    double walk_time, t1, t2, dsp_t1, dsp_t2;
+    bool walk_stop_flag=false;
 private:
 };
 
