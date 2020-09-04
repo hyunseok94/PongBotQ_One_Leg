@@ -26,11 +26,13 @@ double CRobot::Count2DegDot(int Gear_Ratio, INT32 CountPerSec) {
 
 double CRobot::Count2Rad(int Gear_Ratio, INT32 Count) {
     double th = (double) Count * 2 * PI / (2048 * Gear_Ratio);
+    //double th = (double) Count * 2 * PI / (36 * Gear_Ratio);
     return th; // [rad]
 }
 
 double CRobot::Count2RadDot(int Gear_Ratio, INT32 CountPerSec) {
     double th_dot = (double) CountPerSec * 2 * PI / (2048 * Gear_Ratio);
+    //double th_dot = (double) CountPerSec * 2 * PI / (36 * Gear_Ratio);
     return th_dot; // [rad]
 }
 
@@ -226,12 +228,14 @@ void CRobot::Cycle_Test_Pos_Traj_HS(void) {
 void CRobot::Joystick_Pos_Traj_HS(void) {
     double pos_limit_x_u = 0.25;
     double pos_limit_x_l = -0.20;
-    double pos_limit_y_u = 0.25;
-    double pos_limit_y_l = -0.03;
+    
+    double pos_limit_y_u = 0.11;
+    double pos_limit_y_l = 0.10;
+    
     double pos_limit_z_u = -0.3;
     double pos_limit_z_l = -0.45;
-//    double lamda = 0.8;
-    double lamda = 0.5;
+    double lamda = 0.8;
+    //double lamda = 0.5;
     VectorNd tmp1_target_EP_pos_HS = VectorNd::Zero(3);
 
     if (JoyMode == JOYMODE_HOME) {
@@ -321,33 +325,6 @@ void CRobot::Joystick_Pos_Traj_HS(void) {
     }
     target_joint_pos_HS = IK_HS(target_EP_pos_HS);
     target_joint_vel_HS = J_A_EP.inverse() * target_EP_vel_HS;
-
-
-        //    else if (JoyMode == JOYMODE_MOVE) {
-        //        tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0] + lamda * joy_vel_x*dt;
-        //        tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1] + lamda * joy_vel_y*dt;
-        //        tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2] + lamda * joy_vel_z*dt;
-        //
-        //        if ((tmp1_target_EP_pos_HS[0]) > pos_limit_x_u || pos_limit_x_l > (tmp1_target_EP_pos_HS[0])) {
-        //            joy_vel_x = 0.0;
-        //            tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0];
-        //        } else {
-        //            tmp2_target_EP_pos_HS[0] = tmp1_target_EP_pos_HS[0];
-        //        }
-        //        if ((tmp1_target_EP_pos_HS[1]) > pos_limit_y_u || pos_limit_y_l > (tmp1_target_EP_pos_HS[1])) {
-        //            joy_vel_y = 0.0;
-        //            tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1];
-        //        } else {
-        //            tmp2_target_EP_pos_HS[1] = tmp1_target_EP_pos_HS[1];
-        //        }
-        //        if ((tmp1_target_EP_pos_HS[2]) > pos_limit_z_u || pos_limit_z_l > (tmp1_target_EP_pos_HS[2])) {
-        //            joy_vel_z = 0.0;
-        //            tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2];
-        //        } else {
-        //            tmp2_target_EP_pos_HS[2] = tmp1_target_EP_pos_HS[2];
-        //        }
-        //        target_EP_pos_HS = tmp2_target_EP_pos_HS;
-        //    } 
 }
 
 VectorNd CRobot::FK_HS(VectorNd joint_pos) {

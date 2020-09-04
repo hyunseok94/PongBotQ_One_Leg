@@ -22,6 +22,7 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <inttypes.h>
+#include <stdlib.h>
 
 // **********ROS libraries*********//
 #include <ros/ros.h>
@@ -63,23 +64,9 @@
 //JoyStick
 #include <sensor_msgs/Joy.h>
 
-
-//#include <stdlib.h>
-//#include <unistd.h>
-//#include <sched.h>
-//#include <string.h>
-//#include <sys/time.h>
-//#include <math.h>
-//#include <sys/socket.h>
-//#include <netinet/in.h>
-
-//#include <native/task.h>   //can't use
-//#include <native/timer.h>   //can't use
-//#include <native/mutex.h>   
-//#include <alchemy/sem.h>
-//#include <boilerplate/trace.h>
-//#include <xenomai/init.h>
-
+//PCAN Driver
+#include <fcntl.h>      // for pcan     O_RDWR
+#include <libpcan.h>    // for pcan library.
 
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
@@ -118,6 +105,7 @@ int recv_fail_cnt = 0;
 int main_run = 1;
 int motion_run = 1;
 int print_run = 1;
+int can_run = 1;
 int ros_run = 1;
 
 // Servo
@@ -168,13 +156,14 @@ Model* pongbot_q_model = new Model();
 //CRobot
 CRobot PongBotQ;
 
-
 //Rviz
 ros::Publisher P_joint_states;
 sensor_msgs::JointState m_joint_states;
 //geometry_msgs::TransformStamped odom_trans;
 
-//VectorNd joy_info=VectorNd::Zero(10);
+//CAN
+HANDLE can_handle = nullptr;
+
 //**********************************************//
 //*************** 2. Functions ****************//
 void ServoOn(void); // : Servo ON
@@ -182,6 +171,7 @@ void ServoOff(void); // : Servo Off
 void Torque_Off(void);
 void motion_task(void* arg); // : Thread 1
 void print_task(void* arg); // : Thread 2
+void can_task(void* arg); // : Thread 3
 void catch_signal(int sig); // : Catch "Ctrl + C signal"
 bool ecat_init(void);
 
@@ -235,6 +225,11 @@ int main(int argc, char* argv[]) {
     printf(" Load Prams...\n");
     Load();
 
+    // CAN Setting
+    printf(" Init CAN ...\n");
+    can_handle = LINUX_CAN_Open("/dev/pcan32", O_RDWR);
+    CAN_Init(can_handle, CAN_BAUD_1M, CAN_INIT_TYPE_ST);
+
     // Thread Setting Start
     printf("Create Thread ...\n");
     for (int i = 1; i < 4; ++i) {
@@ -242,20 +237,24 @@ int main(int argc, char* argv[]) {
         sleep(1);
     }
 
-    rt_task_create(&RT_task1, "Motion_task", 0, 99, 0);
+    //rt_task_create(&RT_task1, "Motion_task", 0, 99, 0);
     rt_task_create(&RT_task2, "Print_task", 0, 80, 0);
+    rt_task_create(&RT_task3, "CAN_task", 0, 95, 0);
 
-    rt_task_start(&RT_task1, &motion_task, NULL);
+    //rt_task_start(&RT_task1, &motion_task, NULL);
     rt_task_start(&RT_task2, &print_task, NULL);
+    rt_task_start(&RT_task3, &can_task, NULL);
     // Thread Setting End
 
     ros::Rate loop_rate(1000);
     while (ros::ok()) {
+
         ROSMsgPublish();
 
         ros::spinOnce();
         loop_rate.sleep();
     }
+
 
     return 0;
 }
@@ -310,6 +309,7 @@ void motion_task(void* arg) {
 #else  //nonDC
     ec_send_processdata();
     rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
+    //rt_task_set_periodic(NULL, TM_NOW, 100*cycle_ns);
 
 #endif
 
@@ -364,7 +364,7 @@ void motion_task(void* arg) {
             if (ready_cnt >= 5000) {
                 sys_ready = 1;
             }
-        } else { // realtime action...
+        } else { // realtime action...           
             EncoderRead();
             GetActualData();
             PongBotQ.Mode_Change();
@@ -500,6 +500,7 @@ void print_task(void* arg) {
     //rt_printf("Print Thread Start \n");
 
     while (print_run) {
+
         previous3 = now3;
         //rt_mutex_acquire(&mutex_desc, TM_INFINITE);
         rt_task_wait_period(NULL);
@@ -527,6 +528,9 @@ void print_task(void* arg) {
 
                 //rt_printf("actual_q(degree) = %3f / %3f / %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f \n", PongBotQ.actual_joint_pos_HS[0] * R2D, PongBotQ.actual_joint_pos_HS[1] * R2D, PongBotQ.actual_joint_pos_HS[2] * R2D, PongBotQ.actual_joint_pos_HS[3] * R2D, PongBotQ.actual_joint_pos_HS[4] * R2D, PongBotQ.actual_joint_pos_HS[5] * R2D, PongBotQ.actual_joint_pos_HS[6] * R2D, PongBotQ.actual_joint_pos_HS[7] * R2D, PongBotQ.actual_joint_pos_HS[8] * R2D, PongBotQ.actual_joint_pos_HS[9] * R2D, PongBotQ.actual_joint_pos_HS[10] * R2D, PongBotQ.actual_joint_pos_HS[11] * R2D, PongBotQ.actual_joint_pos_HS[12] * R2D);
                 //rt_printf("actual_q_dot = %3f / %3f / %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f\n", PongBotQ.actual_joint_vel_HS[0], PongBotQ.actual_joint_vel_HS[1], PongBotQ.actual_joint_vel_HS[2],PongBotQ.actual_joint_vel_HS[3],PongBotQ.actual_joint_vel_HS[4],PongBotQ.actual_joint_vel_HS[5],PongBotQ.actual_joint_vel_HS[6],PongBotQ.actual_joint_vel_HS[7],PongBotQ.actual_joint_vel_HS[8],PongBotQ.actual_joint_vel_HS[9],PongBotQ.actual_joint_vel_HS[10],PongBotQ.actual_joint_vel_HS[11],PongBotQ.actual_joint_vel_HS[12]);
+
+                rt_printf("Incre_actual_q(degree) = %3f / %3f / %3f \n", PongBotQ.Incre_actual_joint_pos_HS[0] * R2D, PongBotQ.Incre_actual_joint_pos_HS[1] * R2D, PongBotQ.Incre_actual_joint_pos_HS[2] * R2D);
+                rt_printf("abs_actual_q(degree) = %3f / %3f / %3f \n", PongBotQ.ABS_actual_joint_pos_HS2[0] * R2D, PongBotQ.ABS_actual_joint_pos_HS2[1] * R2D, PongBotQ.ABS_actual_joint_pos_HS2[2] * R2D);
                 rt_printf("actual_q(degree) = %3f / %3f / %3f \n", PongBotQ.actual_joint_pos_HS[0] * R2D, PongBotQ.actual_joint_pos_HS[1] * R2D, PongBotQ.actual_joint_pos_HS[2] * R2D);
                 rt_printf("actual_q_dot = %3f / %3f / %3f\n", PongBotQ.actual_joint_vel_HS[0], PongBotQ.actual_joint_vel_HS[1], PongBotQ.actual_joint_vel_HS[2]);
                 rt_printf("init_q(degree) = %3f / %3f / %3f\n", PongBotQ.init_joint_pos_HS[0] * R2D, PongBotQ.init_joint_pos_HS[1] * R2D, PongBotQ.init_joint_pos_HS[2] * R2D);
@@ -569,19 +573,71 @@ void print_task(void* arg) {
     }
 }
 
+void can_task(void* arg) {
+    TPCANMsg can_QP_msg[1]; //msgType for Can-Send
+    TPCANRdMsg can_recv_msg[1]; //msgType for Can-Read
+
+    rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
+
+    while (can_run) {
+        rt_task_wait_period(NULL);
+
+        LINUX_CAN_Read(can_handle, &can_recv_msg[0]);
+        usleep(100);
+        printf("canstat:%d\n", CAN_Status(can_handle));
+        printf("Frame(Read) = %08lx %02x %02x %02x %02x %02x %02x %02x %02x," "Time Stamp = %u ms\n",
+                (unsigned long) can_recv_msg[0].Msg.ID,
+                can_recv_msg[0].Msg.DATA[0],
+                can_recv_msg[0].Msg.DATA[1],
+                can_recv_msg[0].Msg.DATA[2],
+                can_recv_msg[0].Msg.DATA[3],
+                can_recv_msg[0].Msg.DATA[4],
+                can_recv_msg[0].Msg.DATA[5],
+                can_recv_msg[0].Msg.DATA[6],
+                can_recv_msg[0].Msg.DATA[7],
+                can_recv_msg[0].dwTime
+                );
+        CAN_Write(can_handle, &can_QP_msg[0]);
+        can_QP_msg[0].MSGTYPE = MSGTYPE_STANDARD;
+        can_QP_msg[0].LEN = 8; //QP;
+        can_QP_msg[0].ID = 1; //
+        can_QP_msg[0].DATA[0] = 0x33;
+        can_QP_msg[0].DATA[1] = 0x33;
+        can_QP_msg[0].DATA[2] = 0x22;
+        can_QP_msg[0].DATA[3] = 0x22;
+        can_QP_msg[0].DATA[4] = 0x11;
+        can_QP_msg[0].DATA[5] = 0x11;
+        can_QP_msg[0].DATA[6] = 0x00;
+        can_QP_msg[0].DATA[7] = 0x00;
+
+        printf("Frame(Write) = %08lx %02x %02x %02x %02x %02x %02x %02x %02x \n",
+                (unsigned long) can_recv_msg[0].Msg.ID,
+                can_QP_msg[0].DATA[0],
+                can_QP_msg[0].DATA[1],
+                can_QP_msg[0].DATA[2],
+                can_QP_msg[0].DATA[3],
+                can_QP_msg[0].DATA[4],
+                can_QP_msg[0].DATA[5],
+                can_QP_msg[0].DATA[6],
+                can_QP_msg[0].DATA[7]
+                );
+        std::cout << "________________________" << std::endl;
+    }
+}
+
 void catch_signal(int sig) {
 
     printf("Program END...\n");
 
     FileSave();
-
+    CAN_Close(can_handle);
+    
     rt_task_delete(&RT_task1);
     rt_task_delete(&RT_task2);
-
-    //sleep(2); //after 2[s] Program end
-    //exit(1);
-
+    rt_task_delete(&RT_task3);
+    
     ros::shutdown();
+    exit(0);
 }
 
 void ServoOn(void) {
@@ -608,16 +664,25 @@ void EncoderRead(void) {
             PongBotQ.ABS_actual_joint_pos_HS[i] = PongBotQ.Count2Rad_ABS(PongBotQ.Resolution[i], PongBotQ.Count_tf(PongBotQ.Ratio[i], ELMO_drive_pt[i].ptInParam->AuxiliaryPositionActualValue));
             PongBotQ.Incre_actual_joint_pos_offset_HS[i] = PongBotQ.Count2Rad(PongBotQ.Gear[i], ELMO_drive_pt[i].ptInParam->PositionActualValue);
             PongBotQ.actual_joint_pos_HS[i] = PongBotQ.ABS_actual_joint_pos_HS[i] + PongBotQ.Incre_actual_joint_pos_HS[i];
-            PongBotQ.actual_EP_pos_local_HS = PongBotQ.FK_HS(PongBotQ.actual_joint_pos_HS);
-            PongBotQ.pre_actual_EP_pos_local_HS = PongBotQ.actual_EP_pos_local_HS;
+            //PongBotQ.actual_joint_pos_HS[i] = PongBotQ.Incre_actual_joint_pos_HS[i];
+            //            if (i == 2) {
+            //                PongBotQ.actual_joint_pos_HS[i] = PongBotQ.Incre_actual_joint_pos_HS[i] - PI / 2;
+            //            }
         }
+        PongBotQ.actual_EP_pos_local_HS = PongBotQ.FK_HS(PongBotQ.actual_joint_pos_HS);
+        PongBotQ.pre_actual_EP_pos_local_HS = PongBotQ.actual_EP_pos_local_HS;
         PongBotQ.Encoder_Reset_Flag = false;
     }
 
     for (int i = 0; i < NUM_OF_ELMO; i++) {
+        PongBotQ.ABS_actual_joint_pos_HS2[i] = PongBotQ.Count2Rad_ABS(PongBotQ.Resolution[i], PongBotQ.Count_tf(PongBotQ.Ratio[i], ELMO_drive_pt[i].ptInParam->AuxiliaryPositionActualValue));
         PongBotQ.Incre_actual_joint_pos_HS[i] = PongBotQ.Count2Rad(PongBotQ.Gear[i], ELMO_drive_pt[i].ptInParam->PositionActualValue) - PongBotQ.Incre_actual_joint_pos_offset_HS[i];
         PongBotQ.actual_joint_pos_HS[i] = PongBotQ.ABS_actual_joint_pos_HS[i] + PongBotQ.Incre_actual_joint_pos_HS[i];
+        //PongBotQ.actual_joint_pos_HS[i] = PongBotQ.Incre_actual_joint_pos_HS[i];
         PongBotQ.actual_joint_vel_HS[i] = PongBotQ.Count2RadDot(PongBotQ.Gear[i], ELMO_drive_pt[i].ptInParam -> VelocityActualValue);
+        //        if (i == 2) {
+        //            PongBotQ.actual_joint_pos_HS[i] = PongBotQ.Incre_actual_joint_pos_HS[i] - PI / 2;
+        //        }
     }
 }
 
@@ -627,7 +692,7 @@ void GetActualData(void) {
     PongBotQ.tmp_actual_EP_vel_local_HS = PongBotQ.J_A * PongBotQ.tmp_actual_joint_vel_HS;
     PongBotQ.actual_EP_vel_local_HS = PongBotQ.tmp_actual_EP_vel_local_HS.tail(3);
     //PongBotQ.pre_actual_EP_pos_local_HS = PongBotQ.actual_EP_pos_local_HS;
-    
+
     PongBotQ.actual_EP_pos_global_HS << PongBotQ.actual_EP_pos_local_HS(0), PongBotQ.actual_EP_pos_local_HS(1), 0;
     PongBotQ.actual_EP_vel_global_HS = (PongBotQ.actual_EP_pos_global_HS - PongBotQ.pre_actual_EP_pos_global_HS) / PongBotQ.dt;
     PongBotQ.pre_actual_EP_pos_global_HS = PongBotQ.actual_EP_pos_global_HS;
@@ -654,7 +719,7 @@ void Load(void) {
     PongBotQ.foot_height_HS = 0.15;
     //PongBotQ.foot_height_HS = 0.10;
     //PongBotQ.foot_height_HS = 0.05;
-    
+
     PongBotQ.init_kp_joint_HS = PongBotQ.kp_joint_HS;
     PongBotQ.init_kd_joint_HS = PongBotQ.kd_joint_HS;
     PongBotQ.init_kp_EP_HS = PongBotQ.kp_EP_HS;
@@ -703,18 +768,18 @@ void Callback3(const sensor_msgs::Joy& msg) {
     if ((int) msg.buttons[3] == 1) { //takeoff
         PongBotQ.JoyMode = JOYMODE_MOVE;
     }
-    
+
     if ((int) msg.buttons[1] == 1) { //takeoff
         PongBotQ.JoyMode = JOYMODE_WALK;
         PongBotQ.cnt_HS = 0;
     }
-    
-    if((int) msg.buttons[5]==1){
-        PongBotQ.walk_stop_flag=true;
+
+    if ((int) msg.buttons[5] == 1) {
+        PongBotQ.walk_stop_flag = true;
     }
-    
-    if((int) msg.buttons[4]==1){
-        PongBotQ.walk_stop_flag=false;
+
+    if ((int) msg.buttons[4] == 1) {
+        PongBotQ.walk_stop_flag = false;
     }
 }
 
@@ -731,16 +796,16 @@ void ROSMsgPublish(void) {
     //    m_data.data[4] = PongBotQ.target_joint_pos_HS[1] * R2D;
     //    m_data.data[5] = PongBotQ.target_joint_pos_HS[2] * R2D;
 
-//    m_joint_states.header.stamp = ros::Time::now();
-//    m_joint_states.name[0] = "HR_JOINT";
-//    m_joint_states.name[1] = "HP_JOINT";
-//    m_joint_states.name[2] = "KN_JOINT";
-    //    m_joint_states.position[0] = PongBotQ.actual_joint_pos_HS[0];
-    //    m_joint_states.position[1] = PongBotQ.actual_joint_pos_HS[1];
-    //    m_joint_states.position[2] = PongBotQ.actual_joint_pos_HS[2];
-//    m_joint_states.position[0] = PongBotQ.target_joint_pos_HS[0];
-//    m_joint_states.position[1] = PongBotQ.target_joint_pos_HS[1];
-//    m_joint_states.position[2] = PongBotQ.target_joint_pos_HS[2];
+    m_joint_states.header.stamp = ros::Time::now();
+    m_joint_states.name[0] = "HR_JOINT";
+    m_joint_states.name[1] = "HP_JOINT";
+    m_joint_states.name[2] = "KN_JOINT";
+    m_joint_states.position[0] = PongBotQ.target_joint_pos_HS[0];
+    m_joint_states.position[1] = PongBotQ.target_joint_pos_HS[1];
+    //  m_joint_states.position[2] = PongBotQ.actual_joint_pos_HS[2];
+    //m_joint_states.position[0] = PongBotQ.target_joint_pos_HS[0];
+    //m_joint_states.position[1] = PongBotQ.target_joint_pos_HS[1];
+    m_joint_states.position[2] = PongBotQ.target_joint_pos_HS[2];
 
     //    odom_trans.header.stamp = ros::Time::now();
     //    odom_trans.header.frame_id = "odom";
@@ -752,7 +817,7 @@ void ROSMsgPublish(void) {
     //    odom_trans.transform.rotation.x = 0;
     //    odom_trans.transform.rotation.y = 0;
     //    odom_trans.transform.rotation.z = 0;
-    //    odom_trans.transform.rotation.w = 1;
+    //    odom_trans.transform.rotation.w = 1;z
 
 
     P_data.publish(m_data);
@@ -774,18 +839,18 @@ void DataSave(void) {
     save_array[save_cnt][0] = del_time1;
     save_array[save_cnt][1] = del_time2;
     save_array[save_cnt][2] = max_time;
-    save_array[save_cnt][3] = ELMO_drive_pt[0].ptInParam->StatusWord;
-    save_array[save_cnt][4] = ELMO_drive_pt[1].ptInParam->StatusWord;
-    save_array[save_cnt][5] = ELMO_drive_pt[2].ptInParam->StatusWord;
-    save_array[save_cnt][6] = ELMO_drive_pt[0].ptInParam->TorqueActualValue;
-    save_array[save_cnt][7] = ELMO_drive_pt[1].ptInParam->TorqueActualValue;
-    save_array[save_cnt][8] = ELMO_drive_pt[2].ptInParam->TorqueActualValue;
-    save_array[save_cnt][9] = PongBotQ.actual_joint_vel_HS[0];
-    save_array[save_cnt][10] = PongBotQ.actual_joint_vel_HS[1];
-    save_array[save_cnt][11] = PongBotQ.actual_joint_vel_HS[2];
-    
-    
-    
+    //    save_array[save_cnt][3] = ELMO_drive_pt[0].ptInParam->StatusWord;
+    //    save_array[save_cnt][4] = ELMO_drive_pt[1].ptInParam->StatusWord;
+    //    save_array[save_cnt][5] = ELMO_drive_pt[2].ptInParam->StatusWord;
+    //    save_array[save_cnt][6] = ELMO_drive_pt[0].ptInParam->TorqueActualValue;
+    //    save_array[save_cnt][7] = ELMO_drive_pt[1].ptInParam->TorqueActualValue;
+    //    save_array[save_cnt][8] = ELMO_drive_pt[2].ptInParam->TorqueActualValue;
+    save_array[save_cnt][3] = PongBotQ.actual_joint_pos_HS[0] * R2D;
+    save_array[save_cnt][4] = PongBotQ.actual_joint_pos_HS[1] * R2D;
+    save_array[save_cnt][5] = PongBotQ.actual_joint_pos_HS[2] * R2D;
+
+
+
 
 
     if (save_cnt < SAVE_COUNT - 1) {
@@ -868,7 +933,7 @@ bool ecat_init(void) {
                     wkc += RS3_write32(k + 1, 0x1a07, 0x0005, 0x60770010);
                     wkc += RS3_write32(k + 1, 0x1a07, 0x0006, 0x20a00020);
                     wkc += RS3_write8(k + 1, 0x1a07, 0x0000, 0x06);
-                    
+
                     wkc += RS3_write16(k + 1, 0x1c13, 0x0001, 0x1a07); //  (row,PDO) 
                     wkc += RS3_write8(k + 1, 0x1c13, 0x0000, 0x01); //  (index,Row)
                 }

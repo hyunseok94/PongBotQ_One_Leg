@@ -6,6 +6,10 @@
 #include <alchemy/task.h>
 #include <alchemy/timer.h>
 
+//PCAN Driver
+#include <fcntl.h>      // for pcan     O_RDWR
+#include <libpcan.h>    // for pcan library.
+
 //Save
 #define SAVE_LENGTH 8    //The number of data
 #define SAVE_COUNT 3600000 //Save Time = 10000[ms]
@@ -19,6 +23,10 @@ RTIME now1, previous1;
 RTIME now2, previous2;
 
 RT_TASK demo_task;
+
+//CAN
+HANDLE can_handle = nullptr;
+
 void DataSave(void);
 void FileSave(void);
 
@@ -61,6 +69,46 @@ int main(int argc, char* argv[]) {
 
     rt_task_create(&demo_task, "trivial", 0, 99, 0);
     rt_task_start(&demo_task, &demo, NULL);
+    
+    //can_handle = LINUX_CAN_Open("/dev/pcan32", O_RDWR);
+    
+    CAN_Init(can_handle, CAN_BAUD_1M, CAN_INIT_TYPE_ST);
+
+    printf("Status = %i\n", CAN_Status(can_handle));
+
+    if(CAN_Status(can_handle)==32)
+    {
+        printf("can open\n");
+    }
+    else
+    {
+        printf("can Init fail\n");
+        //exit(0);
+    }
+
+
+    //printf("Starting cyclic task...\n");
+
+    //char str[20];
+    //sprintf(str, "send task");
+    //int rtcreateflag=rt_task_create(&Can_send_task, str, 0, 50, 0);
+//    if(rtcreateflag!=0)
+//    {
+//        printf("rt cansend create fail.\n");
+//        exit(0);
+//        this->close();
+//
+//    }
+//
+//    int rtstartflag=rt_task_start(&Can_send_task, &Can_send_task_proc, 0);
+//    if(rtstartflag!=0)
+//    {
+//        printf("rt start fail.\n");
+//        exit(0);
+//        this->close();
+//    }
+    
+    
     pause();
     rt_task_delete(&demo_task);
 

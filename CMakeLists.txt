@@ -70,7 +70,7 @@ include_directories(
 execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
 execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
 ## Xenomai Setting end
 
 # To Set executable file's location to ${PROJECT_SOURCE_DIR}/bin.

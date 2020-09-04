@@ -20,8 +20,6 @@
 #define AXIS_Pitch 4
 #define AXIS_Yaw   5
 
-#define enumstr(a) (#a)
-
 using Eigen::VectorXd;
 using namespace std;
 using namespace RigidBodyDynamics;
@@ -270,13 +268,19 @@ public:
     bool Encoder_Reset_Flag = true;
     int Gear[NUM_OF_ELMO] = {50, 50, 50};
     //int Gear[NUM_OF_ELMO] = {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50};
+    
     int Ratio[NUM_OF_ELMO] = {1, 1, 1};
     //int Ratio[NUM_OF_ELMO] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    
     double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9};
     //double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9, 2.85, 2.85, 8.9, 2.85, 2.85, 2.85, 8.9, 2.85, 2.85, 8.9};
-    double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156};
+    
+    //double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156}; // HS
+    double Kt[NUM_OF_ELMO] = {0.159, 0.125, 0.210}; //DH 
     //double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156, 0.159, 0.159, 0.156, 0.159, 0.159, 0.159, 0.156, 0.159, 0.159, 0.156};
-    int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384}; //16384(2^14)
+    
+    //int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384}; //16384(2^14) //HS
+    int32_t Resolution[NUM_OF_ELMO] = {262144, 262144, 16384}; //16384(2^14) //DH
     //int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384, 65536, 65536, 16384,65536,65536, 65536, 16384,65536, 65536, 16384}; //16384(2^14)
 
     int ControlMode = 0;
@@ -323,6 +327,7 @@ public:
 
     VectorNd actual_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd ABS_actual_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd ABS_actual_joint_pos_HS2 = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd Incre_actual_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd Incre_actual_joint_pos_offset_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd actual_joint_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
@@ -392,7 +397,9 @@ public:
     MatrixNd J_EP = MatrixNd::Zero(3, 9); //# size 3 * qdot_size(=9)
     MatrixNd J_A = MatrixNd::Zero(9, 9);
     MatrixNd J_A_EP = MatrixNd::Zero(3, 3);
-
+    
+//    MatrixNd Test_Mat=MatrixNd::Identity(130,130);
+//    MatrixNd Test_Mat_result=MatrixNd::Zero(130,130);
     double alpha = 0.0;
     bool stop_flag = false;
 

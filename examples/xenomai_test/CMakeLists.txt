@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(xenomai_test)
 
-LIST(APPEND CMAKE_MODULE_PATH
-${PROJECT_SOURCE_DIR}
+
+SET (SRC_FILES 
+ main.cpp
 )
+
+
+LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
 
 # appended to the catkin_variables(catkin_INCLUDE_DIRS contains the include paths for this lists)
 #find_package(catkin REQUIRED COMPONENTS 
@@ -26,22 +30,28 @@ ${PROJECT_SOURCE_DIR}
 include_directories(
  include
  ${catkin_INCLUDE_DIRS}
+ /usr/xenomai/include/cobalt
+ /usr/xenomai/include/
+ /usr/xenomai/include/alchemy
+ /usr/xenomai/lib
+ /usr/xenomai/
+ ../../include/PCAN/drvier
+ ../../include/PCAN/lib
 )
 
 # Xenomai setting
-#execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --cflags OUTPUT_VARIABLE XENO_CFLAGS)
-#execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --ldflags OUTPUT_VARIABLE XENO_LDFLAGS)
-
-#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++11 -lefence ${XENO_CFLAGS}")
-#string(STRIP ${CMAKE_CXX_FLAGS} CMAKE_CXX_FLAGS)
-#SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--wrap=main -Wl,--no-as-needed -Wl,@/usr/xenomai/lib/modechk.wrappers -lalchemy -lcopperplate /usr/xenomai/lib/xenomai/bootstrap.o -Wl,--dynamic-list=/usr/xenomai/lib/dynlist.ld -L/usr/xenomai/lib -lcobalt -lmodechk -lpthread -lrt")
+#execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+#execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
 ## Xenomai Setting end
 
 # To Set executable file's location to ${PROJECT_SOURCE_DIR}/bin.
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # To specify an executable target that must be buillt.
-add_executable(xenomai_test_exe main.cpp)
 
+
+#add_executable(xenomai_test_exe main.cpp)
+add_executable(xenomai_test_exe ${SRC_FILES})
 
 
