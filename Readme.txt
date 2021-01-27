@@ -13,7 +13,7 @@ ________________________________________________________________________________
 Main. execution
 (0) roscore
 (1) cm
-(2) cd ~/catkin_ws/src/PongBotQ_One_Leg/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip elmo_pkgs_exe
+(2) cd ~/catkin_ws/src/PongBotQ_V6/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip elmo_pkgs_exe
 (3) roslaunch elmo_pkgs elmo.launch
 ___________________________________________________________________________________
 Example. xenomai_test execution

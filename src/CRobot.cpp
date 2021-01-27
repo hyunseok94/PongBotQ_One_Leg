@@ -41,10 +41,10 @@ double CRobot::Count2Rad_ABS(int _Resolution, INT32 Count) {
     return th;
 }
 
-INT32 CRobot::Count_tf(int _Ratio, INT32 _Count_in) {
-    INT32 _Count_out = (INT32) _Count_in / (_Ratio);
-    return _Count_out;
-}
+//INT32 CRobot::Count_tf(INT32 _Count_in) {
+//    INT32 _Count_out = (INT32) _Count_in;
+//    return _Count_out;
+//}
 
 INT16 CRobot::Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur) {
     INT16 inputCurrent = (OutputTorque / _Gear) / _Kt / _ratedCur * 1000;
@@ -58,21 +58,26 @@ void CRobot::setRobotModel(Model* getModel) {
     m_pModel->gravity = Vector3d(0., 0., -9.81);
     nDOF = m_pModel->dof_count - 6; //* get Degree of freedom, Except x,y,z,roll,pitch,yaw of the robot
     joint = new JOINT[nDOF]; //* only joint of the robot excepting x,y,z,roll,pitch,yaw of the robot
-    RobotState = VectorNd::Zero(10);
-    RobotStatedot = VectorNd::Zero(9);
-    RobotState2dot = VectorNd::Zero(9);
+    
+    RobotState = VectorNd::Zero(19);
+    RobotStatedot = VectorNd::Zero(18);
+    RobotState2dot = VectorNd::Zero(18);
     BasePosOri = VectorNd::Zero(6);
     BaseVel = VectorNd::Zero(6);
-    JointAngle = VectorNd::Zero(nDOF);
-    JointVel = VectorNd::Zero(nDOF);
+//    JointAngle = VectorNd::Zero(nDOF);
+//    JointVel = VectorNd::Zero(nDOF);
 
-    base.ID = m_pModel->GetBodyId("BASE");
-    EP.ID = m_pModel->GetBodyId("CALF");
+    base.ID = m_pModel->GetBodyId("BODY");
+    RL.ID = m_pModel->GetBodyId("RL_CALF");
+    RR.ID = m_pModel->GetBodyId("RR_CALF");
+    FL.ID = m_pModel->GetBodyId("FL_CALF");
+    FR.ID = m_pModel->GetBodyId("FR_CALF");
+    
 
     QQ << 0, 0, 0, 1;
     m_pModel->SetQuaternion(base.ID, QQ, RobotState);
 
-    for (unsigned int i = 0; i < NUM_OF_ELMO; ++i) {
+    for (unsigned int i = 0; i < nDOF; ++i) {
         joint[i].torque = 0;
     }
 
@@ -106,31 +111,39 @@ void CRobot::ComputeTorqueControl(void) {
     RobotStatedot(AXIS_Yaw) = base.currentYawvel;
 
     for (int i = 0; i < nDOF; ++i) {
-        RobotState(6 + i) = actual_joint_pos_HS[i];
-        RobotStatedot(6 + i) = actual_joint_vel_HS[i];
+        RobotState(6 + i) = actual_joint_pos[i];
+        RobotStatedot(6 + i) = actual_joint_vel[i];
     }
 
     Math::Quaternion QQ(0, 0, 0, 1);
     m_pModel->SetQuaternion(base.ID, QQ, RobotState);
     CalcPointJacobian6D(*m_pModel, RobotState, base.ID, Originbase, J_BASE, true);
-    CalcPointJacobian(*m_pModel, RobotState, EP.ID, EP_OFFSET, J_EP, true);
+    CalcPointJacobian(*m_pModel, RobotState, RL.ID, EP_OFFSET_RL, J_RL, true);
+    CalcPointJacobian(*m_pModel, RobotState, RR.ID, EP_OFFSET_RR, J_RR, true);
+    CalcPointJacobian(*m_pModel, RobotState, FL.ID, EP_OFFSET_FL, J_FL, true);
+    CalcPointJacobian(*m_pModel, RobotState, FR.ID, EP_OFFSET_FR, J_FR, true);
+  
+    J_RL2 = J_RL.block(0, 6, 3, 3);
+    J_RR2 = J_RR.block(0, 9, 3, 3);
+    J_FL2 = J_FL.block(0, 12, 3, 3);
+    J_FR2 = J_FR.block(0, 15, 3, 3);
 
-    //J_A<< J_BASE\
-            , J_EP;
-    J_A.block(0, 0, 6, 9) = J_BASE;
-    J_A.block(6, 0, 3, 9) = J_EP;
+    J_A.block(0, 0, 3, 3) = J_RL2;
+    J_A.block(3, 3, 3, 3) = J_RR2;
+    J_A.block(6, 6, 3, 3) = J_FL2;
+    J_A.block(9, 9, 3, 3) = J_FR2;
+    
     //std::cout<<J_A<<std::endl;
-    J_A_EP = J_EP.block(0, 6, 3, 3);
-
+    
     CompositeRigidBodyAlgorithm(*m_pModel, RobotState, M_term, true);
     NonlinearEffects(*m_pModel, RobotState, RobotStatedot, hatNonLinearEffects);
     NonlinearEffects(*m_pModel, RobotState, VectorNd::Zero(m_pModel->dof_count), G_term);
 
     C_term = hatNonLinearEffects - G_term;
 
-    Joint_Controller();
-    Cartesian_Controller();
-    Controller_Change();
+    //Joint_Controller();
+   // Cartesian_Controller();
+    //Controller_Change();
 
     //    CTC_Torque = Joint_Controller_HS + C_term + G_term - J_A.transpose() * (Cart_Controller_HS);
     //CTC_Torque = Joint_Controller_HS - J_A.transpose() * (Cart_Controller_HS);
@@ -174,7 +187,7 @@ void CRobot::Init_Pos_Traj_HS(void) {
         }
     }
     target_joint_pos_HS = IK_HS(target_EP_pos_HS);
-    target_joint_vel_HS = J_A_EP.inverse() * target_EP_vel_HS;
+    target_joint_vel_HS = J_A.inverse() * target_EP_vel_HS;
 }
 
 void CRobot::Home_Pos_Traj_HS(void) {
@@ -196,7 +209,7 @@ void CRobot::Home_Pos_Traj_HS(void) {
         target_EP_vel_HS << 0, 0, 0;
     }
     target_joint_pos_HS = IK_HS(target_EP_pos_HS);
-    target_joint_vel_HS = J_A_EP.inverse() * target_EP_vel_HS;
+    target_joint_vel_HS = J_A.inverse() * target_EP_vel_HS;
 }
 
 void CRobot::Cycle_Test_Pos_Traj_HS(void) {
@@ -266,27 +279,27 @@ void CRobot::Joystick_Pos_Traj_HS(void) {
             joy_vel_x = 0.0;
             tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0];
         } else {
-            tmp2_target_EP_pos_HS[0] = tmp1_target_EP_pos_HS[0];
+           // tmp2_target_EP_pos_HS[0] = tmp1_target_EP_pos_HS[0];
         }
         if ((tmp1_target_EP_pos_HS[1]) > pos_limit_y_u || pos_limit_y_l > (tmp1_target_EP_pos_HS[1])) {
             joy_vel_y = 0.0;
             tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1];
         } else {
-            tmp2_target_EP_pos_HS[1] = tmp1_target_EP_pos_HS[1];
+            //tmp2_target_EP_pos_HS[1] = tmp1_target_EP_pos_HS[1];
         }
-            target_EP_pos_HS[0] = tmp2_target_EP_pos_HS[0];
-            target_EP_pos_HS[1] = tmp2_target_EP_pos_HS[1];
+            //target_EP_pos_HS[0] = tmp2_target_EP_pos_HS[0];
+            //target_EP_pos_HS[1] = tmp2_target_EP_pos_HS[1];
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////            
         if (JoyMode == JOYMODE_MOVE) {
-            tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2] + lamda * joy_vel_z*dt;
-            if ((tmp1_target_EP_pos_HS[2]) > pos_limit_z_u || pos_limit_z_l > (tmp1_target_EP_pos_HS[2])) {
-                joy_vel_z = 0.0;
-                tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2];
-            } else {
-                tmp2_target_EP_pos_HS[2] = tmp1_target_EP_pos_HS[2];
-            }
-            target_EP_pos_HS[2] = tmp2_target_EP_pos_HS[2];
+           // tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2] + lamda * joy_vel_z*dt;
+//            if ((tmp1_target_EP_pos_HS[2]) > pos_limit_z_u || pos_limit_z_l > (tmp1_target_EP_pos_HS[2])) {
+//                joy_vel_z = 0.0;
+//                tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2];
+//            } else {
+////                tmp2_target_EP_pos_HS[2] = tmp1_target_EP_pos_HS[2];
+//            }
+          //  target_EP_pos_HS[2] = tmp2_target_EP_pos_HS[2];
         } 
         else if (JoyMode == JOYMODE_WALK) {
             walk_time=cnt_HS*dt;
@@ -324,7 +337,7 @@ void CRobot::Joystick_Pos_Traj_HS(void) {
         }
     }
     target_joint_pos_HS = IK_HS(target_EP_pos_HS);
-    target_joint_vel_HS = J_A_EP.inverse() * target_EP_vel_HS;
+    target_joint_vel_HS = J_A.inverse() * target_EP_vel_HS;
 }
 
 VectorNd CRobot::FK_HS(VectorNd joint_pos) {
@@ -441,7 +454,7 @@ void CRobot::Joint_Controller(void) {
     Joint_Controller_HS[5] = 0;
 
     for (int i = 0; i < NUM_OF_ELMO; ++i) {
-        Joint_Controller_HS[i + 6] = kp_joint_HS[i] * (target_joint_pos_HS[i] - actual_joint_pos_HS[i]) + kd_joint_HS[i] * (target_joint_vel_HS[i] - actual_joint_vel_HS[i]);
+        Joint_Controller_HS[i + 6] = kp_joint_HS[i] * (target_joint_pos_HS[i] - actual_joint_pos[i]) + kd_joint_HS[i] * (target_joint_vel_HS[i] - actual_joint_vel[i]);
     }
 }
 

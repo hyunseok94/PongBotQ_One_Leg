@@ -3,6 +3,6 @@
 <launch>
  <node pkg="elmo_pkgs" type="elmo_pkgs_exe" name="elmo_pkgs_exe" output="screen" cwd="node"/>
  <node pkg="joy" type="joy_node" name="joystick"/>
- <include file="$(find pongbot_one_leg_rviz)/launch/display.launch"/>
+ <!--include file="$(find pongbot_one_leg_rviz)/launch/display.launch"/-->
 </launch>
 
