@@ -233,25 +233,9 @@ public:
     CRobot(const CRobot& orig);
     virtual ~CRobot();
 
-    double Count2Deg(int Gear_Ratio, INT32 Count);
-    double Count2DegDot(int Gear_Ratio, INT32 CountPerSec);
-    double Count2Rad(int Gear_Ratio, INT32 Count);
-    double Count2RadDot(int Gear_Ratio, INT32 CountPerSec);
-    double Count2Rad_ABS(int _Resolution, INT32 Count);
-   //INT32 Count_tf(int _Ratio, INT32 _Count_in);
-    INT16 Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur);
-
-    void setRobotModel(Model* getModel); //* get Robot Model
-    void getCurrentJoint(VectorNd Angle, VectorNd Vel); // get Current Joint
-    void getRobotState(VectorNd BasePosOri, VectorNd BaseVel, VectorNd jointAngle, VectorNd jointVel);
-
-    VectorNd FK_HS(VectorNd joint_pos);
-    VectorNd IK_HS(VectorNd EP_pos);
     void Joint_Controller(void);
     void Cartesian_Controller(void);
-    MatrixNd Jacobian_HS(VectorNd joint_pos);
     VectorNd Localization_Hip2Base_Pos_HS(VectorNd EP_pos_local_hip);
-
     void Mode_Change(void);
     void Controller_Change(void);
     void Init_Pos_Traj_HS(void); // Joint target
@@ -260,45 +244,164 @@ public:
     void Joystick_Pos_Traj_HS(void);
     void ComputeTorqueControl(void);
     void SF_EP_Traj_Gen_HS(double travel_time, VectorNd init_EP_pos, VectorNd goal_EP_pos);
-    void coefficient_5thPoly_HS(double *init_x, double *final_x, double tf, double *output);
-    
-    //***************************************************************************************************8//
-    
+    void coefficient_5thPoly(double *init_x, double *final_x, double tf, double *output);
     
 
+    /*******Motor & Encoder Setting parameters**********/
+    double Count2Deg(int Gear_Ratio, INT32 Count);
+    double Count2DegDot(int Gear_Ratio, INT32 CountPerSec);
+    double Count2Rad(int Gear_Ratio, INT32 Count);
+    double Count2RadDot(int Gear_Ratio, INT32 CountPerSec);
+    double Count2Rad_ABS(int _Resolution, INT32 Count);
+    INT16 Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur);
+    
     bool Encoder_Reset_Flag = true;
-    //int Gear[NUM_OF_ELMO] = {50, 50, 50};
     int Gear[NUM_OF_ELMO] = {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50};
-    
-    //int Ratio[NUM_OF_ELMO] = {1, 1, 1};
-    //int Ratio[NUM_OF_ELMO] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-    
-    //double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9};
     double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9, 8.9, 2.85, 2.85, 2.85, 2.85, 8.9, 8.9, 2.85, 2.85};
-    
-    //double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156}; // HS
-    //double Kt[NUM_OF_ELMO] = {0.159, 0.125, 0.210}; //DH 
     double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156, 0.156, 0.159, 0.159, 0.159, 0.159, 0.156, 0.156, 0.159, 0.159};
-    
-    //int32_t Resolution[NUM_OF_ELMO] = {65536, 65536, 16384}; //16384(2^14) //HS
-    //int32_t Resolution[NUM_OF_ELMO] = {262144, 262144, 16384}; //2^18, 2^14 //DH
     int32_t Resolution[NUM_OF_ELMO] = {262144, 262144, 16384, 16384, 262144, 262144,  262144, 262144, 16384, 16384 , 262144, 262144}; //16384(2^14)
 
-    int ControlMode = 0;
-    int CommandFlag = 0;
-    int ControlMode_print = 0;
-    bool Control_mode_flag = false;
-    int JoyMode = 0;
+    //**************************** RBDL **************************//
+    void setRobotModel(Model* getModel); //* get Robot Model
+    void getRobotState(VectorNd BasePosOri, VectorNd BaseVel, VectorNd jointAngle, VectorNd jointVel);
+    
+    BASE base; //* coordinate of Body
+    JOINT* joint; //* joints of the robot
+    ENDPOINT FR, FL, RR, RL;
+    
+    int nDOF; //* number of DOFs of a robot
+    RigidBodyDynamics::Model* m_pModel; //* URDF Model
+    VectorNd RobotState = VectorNd::Zero(19);
+    VectorNd RobotStatedot = VectorNd::Zero(18);
+    VectorNd RobotState2dot = VectorNd::Zero(18);
+    VectorNd BasePosOri = VectorNd::Zero(6);
+    VectorNd BaseVel = VectorNd::Zero(6);
 
-    bool Mode_Change_flag = false;
-    bool tmp_Mode_Change_flag = false;
-    unsigned int cnt_mode_change = 0;
+    Math::Quaternion QQ;
 
-    double dt = 0.001;
-    double cycle_time_HS = 0.0;
-    unsigned int cnt_HS = 0;
+    MatrixNd M_term = MatrixNd::Zero(18, 18); //10=3*1+6+1
+    VectorNd hatNonLinearEffects = VectorNd::Zero(18);
+    VectorNd G_term = VectorNd::Zero(18);
+    VectorNd C_term = VectorNd::Zero(18);
+    VectorNd CTC_Torque = VectorNd::Zero(18);
 
-    unsigned int cnt_Control_change = 0;
+    double L3_x = 0; //0.025516;
+    double L3_y = 0; //0.0;
+    double L3_z = 0.309; //0.304515;
+
+    VectorNd EP_OFFSET_RL = Vector3d(-L3_x, L3_y, -L3_z);
+    VectorNd EP_OFFSET_RR = Vector3d(-L3_x, L3_y, -L3_z);
+    VectorNd EP_OFFSET_FL = Vector3d(-L3_x, L3_y, -L3_z);
+    VectorNd EP_OFFSET_FR = Vector3d(-L3_x, L3_y, -L3_z);
+    
+    Vector3d Originbase = Vector3d(0, 0, 0);
+
+    MatrixNd J_BASE = MatrixNd::Zero(6, 9);   
+    MatrixNd J_RL = MatrixNd::Zero(3, 18);
+    MatrixNd J_RR = MatrixNd::Zero(3, 18);
+    MatrixNd J_FL = MatrixNd::Zero(3, 18);
+    MatrixNd J_FR = MatrixNd::Zero(3, 18);
+    MatrixNd J_RL2 = MatrixNd::Zero(3, 3);
+    MatrixNd J_RR2 = MatrixNd::Zero(3, 3);
+    MatrixNd J_FL2 = MatrixNd::Zero(3, 3);
+    MatrixNd J_FR2 = MatrixNd::Zero(3, 3);
+    
+    MatrixNd J_A = MatrixNd::Zero(12, 12);
+    
+     /***************Matrix for FK,IK*****************/
+    //Variable  of Rear Left
+    VectorNd FK(VectorNd q);
+    VectorNd IK(VectorNd pos);
+    MatrixNd Jac(VectorNd q);
+    
+    double l1 = 0.105;
+    double l2 = 0.305;
+    double l3 = 0.309; 
+    
+    VectorNd B_O = VectorNd::Zero(4);
+    MatrixNd RL_I2B = MatrixNd::Zero(4, 4);
+    MatrixNd RL_B2HR = MatrixNd::Zero(4, 4);
+    MatrixNd RL_HR2HP = MatrixNd::Zero(4, 4);
+    MatrixNd RL_HP2KN = MatrixNd::Zero(4, 4);
+    MatrixNd RL_KN2T = MatrixNd::Zero(4, 4);
+
+    MatrixNd RR_I2B = MatrixNd::Zero(4, 4);
+    MatrixNd RR_B2HR = MatrixNd::Zero(4, 4);
+    MatrixNd RR_HR2HP = MatrixNd::Zero(4, 4);
+    MatrixNd RR_HP2KN = MatrixNd::Zero(4, 4);
+    MatrixNd RR_KN2T = MatrixNd::Zero(4, 4);
+
+    MatrixNd FL_I2B = MatrixNd::Zero(4, 4);
+    MatrixNd FL_B2HR = MatrixNd::Zero(4, 4);
+    MatrixNd FL_HR2HP = MatrixNd::Zero(4, 4);
+    MatrixNd FL_HP2KN = MatrixNd::Zero(4, 4);
+    MatrixNd FL_KN2T = MatrixNd::Zero(4, 4);
+
+    MatrixNd FR_I2B = MatrixNd::Zero(4, 4);
+    MatrixNd FR_B2HR = MatrixNd::Zero(4, 4);
+    MatrixNd FR_HR2HP = MatrixNd::Zero(4, 4);
+    MatrixNd FR_HP2KN = MatrixNd::Zero(4, 4);
+    MatrixNd FR_KN2T = MatrixNd::Zero(4, 4);
+    
+    //***************
+    VectorNd Raw_ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Raw_Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Raw_actual_joint_vel = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd online_ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd tmp_Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
+
+    VectorNd actual_joint_vel = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd actual_EP_pos_local = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd actual_base_ori_local = VectorNd::Zero(3);
+    VectorNd actual_base_ori_vel_local = VectorNd::Zero(3);
+    VectorNd actual_base_acc_local = VectorNd::Zero(3);
+    VectorNd tmp_actual_base_ori_vel_local=VectorNd::Zero(3);
+    VectorNd pre_actual_base_ori_loacl=VectorNd::Zero(3);
+    
+//VectorNd tmp_actual_joint_vel_HS = VectorNd::Zero(9);
+//    VectorNd init_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd target_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd target_joint_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd goal_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd goal_joint_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd joint_pos_err_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd joint_vel_err_HS = VectorNd::Zero(NUM_OF_ELMO);
+    
+    
+    //VectorNd pre_actual_EP_pos_local_HS = VectorNd::Zero(NUM_OF_ELMO);
+    //VectorNd actual_EP_vel_local_HS = VectorNd::Zero(NUM_OF_ELMO);
+    //VectorNd tmp_actual_EP_vel_local_HS = VectorNd::Zero(9);
+//    VectorNd actual_EP_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd pre_actual_EP_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd actual_EP_vel_global_HS = VectorNd::Zero(NUM_OF_ELMO);
+//
+//    VectorNd init_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd target_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd target_EP_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd goal_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd goal_EP_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd EP_pos_err_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd EP_vel_err_HS = VectorNd::Zero(NUM_OF_ELMO);
+
+//    VectorNd actual_Base_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
+//    VectorNd Cart_Controller_HS = VectorNd::Zero(9);
+//    VectorNd Joint_Controller_HS = VectorNd::Zero(9);
+
+//    VectorNd tmp1_target_EP_pos_HS = VectorNd::Zero(3);
+//    VectorNd tmp2_target_EP_pos_HS = VectorNd::Zero(3);
+
+    VectorNd init_EP_pos = VectorNd::Zero(12);
+    VectorNd target_EP_pos = VectorNd::Zero(12);
+    VectorNd target_EP_vel = VectorNd::Zero(12);
+    VectorNd actual_EP_pos = VectorNd::Zero(12);
+    VectorNd goal_EP_pos = VectorNd::Zero(12);
+
+    VectorNd joint_angle = VectorNd::Zero(12);
+    
+     unsigned int cnt_Control_change = 0;
 
     VectorNd abs_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
@@ -324,100 +427,7 @@ public:
     VectorNd goal_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd goal_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd goal_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
-
-    
-    
-    VectorNd Raw_ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd Raw_Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd online_ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-//    VectorNd Incre_actual_joint_pos_offset = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd tmp_Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd actual_joint_vel = VectorNd::Zero(NUM_OF_ELMO);
-    //VectorNd tmp_actual_joint_vel_HS = VectorNd::Zero(9);
-
-    VectorNd init_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd target_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd target_joint_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd goal_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd goal_joint_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd joint_pos_err_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd joint_vel_err_HS = VectorNd::Zero(NUM_OF_ELMO);
-
-    VectorNd actual_EP_pos_local_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd pre_actual_EP_pos_local_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd actual_EP_vel_local_HS = VectorNd::Zero(NUM_OF_ELMO);
-    //VectorNd tmp_actual_EP_vel_local_HS = VectorNd::Zero(9);
-    VectorNd actual_EP_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd pre_actual_EP_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd actual_EP_vel_global_HS = VectorNd::Zero(NUM_OF_ELMO);
-
-    VectorNd init_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd target_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd target_EP_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd goal_EP_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd goal_EP_vel_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd EP_pos_err_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd EP_vel_err_HS = VectorNd::Zero(NUM_OF_ELMO);
-
-    VectorNd actual_Base_pos_global_HS = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd Cart_Controller_HS = VectorNd::Zero(9);
-    VectorNd Joint_Controller_HS = VectorNd::Zero(9);
-
-//    VectorNd tmp1_target_EP_pos_HS = VectorNd::Zero(3);
-//    VectorNd tmp2_target_EP_pos_HS = VectorNd::Zero(3);
-
-    // RBDL 
-    BASE base; //* coordinate of Body
-    JOINT* joint; //* joints of the robot
-    ENDPOINT FR, FL, RR, RL;
-    
-    int nDOF; //* number of DOFs of a robot
-    RigidBodyDynamics::Model* m_pModel; //* URDF Model
-    VectorNd RobotState = VectorNd::Zero(19);
-    VectorNd RobotStatedot = VectorNd::Zero(18);
-    VectorNd RobotState2dot = VectorNd::Zero(18);
-    VectorNd BasePosOri = VectorNd::Zero(6);
-    VectorNd BaseVel = VectorNd::Zero(6);
-//    VectorNd JointAngle = VectorNd::Zero(3);
-//    VectorNd JointVel = VectorNd::Zero(3);
-    Math::Quaternion QQ;
-
-    MatrixNd M_term = MatrixNd::Zero(18, 18); //10=3*1+6+1
-    VectorNd hatNonLinearEffects = VectorNd::Zero(18);
-    VectorNd G_term = VectorNd::Zero(18);
-    VectorNd C_term = VectorNd::Zero(18);
-    VectorNd CTC_Torque = VectorNd::Zero(18);
-
-    double L3_x = 0; //0.025516;
-    double L3_y = 0; //0.0;
-    double L3_z = 0.309; //0.304515;
-
-    VectorNd EP_OFFSET_RL = Vector3d(-L3_x, L3_y, -L3_z);
-    VectorNd EP_OFFSET_RR = Vector3d(-L3_x, L3_y, -L3_z);
-    VectorNd EP_OFFSET_FL = Vector3d(-L3_x, L3_y, -L3_z);
-    VectorNd EP_OFFSET_FR = Vector3d(-L3_x, L3_y, -L3_z);
-    
-    Vector3d Originbase = Vector3d(0, 0, 0);
-    //MatrixNd J_HS = MatrixNd::Zero(3, 3);
-    MatrixNd J_BASE = MatrixNd::Zero(6, 9);
-    
-    MatrixNd J_RL = MatrixNd::Zero(3, 18);
-    MatrixNd J_RR = MatrixNd::Zero(3, 18);
-    MatrixNd J_FL = MatrixNd::Zero(3, 18);
-    MatrixNd J_FR = MatrixNd::Zero(3, 18);
-    MatrixNd J_RL2 = MatrixNd::Zero(3, 3);
-    MatrixNd J_RR2 = MatrixNd::Zero(3, 3);
-    MatrixNd J_FL2 = MatrixNd::Zero(3, 3);
-    MatrixNd J_FR2 = MatrixNd::Zero(3, 3);
-    
-    MatrixNd J_A = MatrixNd::Zero(12, 12);
-    //MatrixNd J_A_EP = MatrixNd::Zero(3, 3);
-    
-//    MatrixNd Test_Mat=MatrixNd::Identity(130,130);
-//    MatrixNd Test_Mat_result=MatrixNd::Zero(130,130);
+        
     double alpha = 0.0;
     bool stop_flag = false;
 
@@ -442,6 +452,22 @@ public:
     double step_time_HS=tsp_time_HS+fsp_time_HS;
     double walk_time, t1, t2, dsp_t1, dsp_t2;
     bool walk_stop_flag=false;
+    
+      int ControlMode = 0;
+    int CommandFlag = 0;
+    int ControlMode_print = 0;
+    bool Control_mode_flag = false;
+    int JoyMode = 0;
+
+    bool Mode_Change_flag = false;
+    bool tmp_Mode_Change_flag = false;
+    unsigned int cnt_mode_change = 0;
+
+    double dt = 0.001;
+    double cycle_time_HS = 0.0;
+    unsigned int cnt_HS = 0;
+
+    
 private:
 };
 
