@@ -266,6 +266,7 @@ int main(int argc, char* argv[]) {
     rt_task_create(&RT_task1, "Motion_task", 0, 99, 0);
     rt_task_create(&RT_task2, "Print_task", 0, 85, 0);
     rt_task_create(&RT_task3, "Imu_task", 0, 95, 0);
+    //rt_task_create(&RT_task3, "Imu_task", 0, 30, 0);
     
 //    rt_task_create(&RT_task1, "Motion_task", 0, 80, 0);
 //    rt_task_create(&RT_task2, "Print_task", 0, 99, 0);
@@ -836,9 +837,9 @@ void Callback3(const sensor_msgs::Joy& msg) {
     if ((int) msg.buttons[3] == 1) { //takeoff
         PongBotQ.JoyMode = JOYMODE_MOVE;
     }
+        PongBotQ.JoyMode = JOYMODE_WALK;
 
     if ((int) msg.buttons[1] == 1) { //takeoff
-        PongBotQ.JoyMode = JOYMODE_WALK;
         PongBotQ.cnt_HS = 0;
     }
 
@@ -854,9 +855,9 @@ void Callback3(const sensor_msgs::Joy& msg) {
 void ROSMsgPublish(void) {
     //tf::TransformBroadcaster broadcaster;
 
-    m_data.data[0] = PongBotQ.actual_base_ori_local[0];
-    m_data.data[1] = PongBotQ.actual_base_ori_local[1];
-    m_data.data[2] = PongBotQ.actual_base_ori_local[2];
+    m_data.data[0] = PongBotQ.actual_base_ori_local[0] * R2D;
+    m_data.data[1] = PongBotQ.actual_base_ori_local[1] * R2D;
+    m_data.data[2] = PongBotQ.actual_base_ori_local[2] * R2D;
     
 //    m_data.data[2] = PongBotQ.target_joint_vel_HS[2];
 //    m_data.data[1] = PongBotQ.actual_joint_pos_HS[1] * R2D;
@@ -1132,11 +1133,19 @@ int IMU_initialize() {
 void imu_task(void *arg) {
     unsigned int MIC_length = 48;
     unsigned char Receive_MIC_buf[MIC_length];
+    unsigned char Test_buf[2];
+    
+    Test_buf[0]=0x01;
+    Test_buf[1]=0x02;
+//    Test_buf[2]=0x13;
+//    Test_buf[3]=0x4a;
+//    Test_buf[4]=0x58;
 
     //rt_task_set_periodic(NULL, TM_NOW, 20*cycle_ns);
 //    rt_task_set_periodic(NULL, TM_NOW, 4*cycle_ns);
-//    rt_task_set_periodic(NULL, TM_NOW, 2*cycle_ns);
-    rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
+    rt_task_set_periodic(NULL, TM_NOW, 2*cycle_ns);
+    //rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
+    
     //rt_task_set_periodic(NULL, TM_NOW, 5*cycle_ns); //소
     //rt_task_set_periodic(NULL, TM_NOW, 10*cycle_ns);
 
@@ -1163,6 +1172,8 @@ void imu_task(void *arg) {
     int mic_flag1 = 0;
     int buf_index = 0;
     int data_start = 0;
+
+    
        memset(Receive_MIC_buf, 0, MIC_length);
        
     while (imu_run == 1) {
@@ -1188,8 +1199,7 @@ void imu_task(void *arg) {
                 read(fd_MIC, Receive_MIC_buf + j, 1);
             } //rt_printf("\n");    
         }
-        
-        
+                
         tcflush(fd_MIC, TCIFLUSH);
         //tcflush(fd_MIC, TCIOFLUSH);
         //rt_printf("\n");
@@ -1198,6 +1208,7 @@ void imu_task(void *arg) {
 //            rt_printf("Flush Error!\n");
 //        }
         
+                   
         now_time_imu_check = rt_timer_read();
 //        for(int i=0;i<MIC_length;i++){
 //            rt_printf("0x%X /", Receive_MIC_buf[i]);
@@ -1205,20 +1216,30 @@ void imu_task(void *arg) {
 //                rt_printf("\n");
 //            }
 //        }
-//        rt_printf("\n-------------------------\n-");
-//        
-//        if (Receive_MIC_buf[0] == 0x75 && Receive_MIC_buf[1] == 0x65 && Receive_MIC_buf[2] == 0x80 && Receive_MIC_buf[3] == 0x2a && Receive_MIC_buf[4] == 0x0E && Receive_MIC_buf[5] == 0x0C) {            
-//            data_start = 6;
-//            mic_flag1 = 1;
-//        }else{
-//            n_fail++;
-//        }
-        
-        
-        if (Receive_MIC_buf[0] == 0x75 && Receive_MIC_buf[1] == 0x65 && Receive_MIC_buf[2] == 0x80 && Receive_MIC_buf[3] == 0x2a && Receive_MIC_buf[4] == 0x0E && Receive_MIC_buf[5] == 0x0C && Receive_MIC_buf[18] == 0x0E && Receive_MIC_buf[19] == 0x05 && Receive_MIC_buf[32] == 0x0E && Receive_MIC_buf[33] == 0x04) {            
-            data_start = 6;
-            mic_flag1 = 1;
-        }else{
+
+
+        uint8_t checksum_byte1 = 0, checksum_byte2 = 0;
+        uint16_t checksum = 0;
+        for (int i = 0; i < MIC_length - 2; i++) {
+            checksum_byte1 += Receive_MIC_buf[i];
+            checksum_byte2 += checksum_byte1;
+        }
+        checksum = ((uint16_t) checksum_byte1 << 8) + (uint16_t) checksum_byte2;
+
+        if (Receive_MIC_buf[MIC_length - 2] == checksum_byte1 && Receive_MIC_buf[MIC_length - 1] == checksum_byte2) {
+            if (Receive_MIC_buf[0] == 0x75 && Receive_MIC_buf[1] == 0x65 && Receive_MIC_buf[2] == 0x80 && Receive_MIC_buf[3] == 0x2a && Receive_MIC_buf[4] == 0x0E && Receive_MIC_buf[5] == 0x0C && Receive_MIC_buf[18] == 0x0E && Receive_MIC_buf[19] == 0x05 && Receive_MIC_buf[32] == 0x0E && Receive_MIC_buf[33] == 0x04) {
+                data_start = 6;
+                mic_flag1 = 1;
+                //                                rt_printf("\n");
+                //                                for (int i = 0; i < MIC_length; i++) {
+                //                                    rt_printf("0x%X /", Receive_MIC_buf[i]);
+                //                                    if (i % 10 == 9) {
+                //                                        rt_printf("\n");
+                //                                    }
+                //                                }
+                //                                rt_printf("\n");
+            }
+        } else {
             n_fail++;
         }
          //rt_printf("fail_num=%d\n", n_fail);
@@ -1256,10 +1277,11 @@ void imu_task(void *arg) {
             Acc_Z_MIC = *(float*) &Acc_Z_MIC_f;
             Acc_Z_MIC = Acc_Z_MIC;
 
-            if (roll_MIC <= 180 * D2R && roll_MIC >= 90 * D2R) {
+            if (roll_MIC >= -180 * D2R && roll_MIC <= 0){
+                 roll_MIC = roll_MIC + 180.0 * D2R;
+            }
+            else if (roll_MIC<=180*D2R && roll_MIC>=0){
                 roll_MIC = roll_MIC - 180.0 * D2R;
-            } else if (roll_MIC >= -180 * D2R && roll_MIC <= -90 * D2R) {
-                roll_MIC = roll_MIC + 180.0 * D2R;
             }
 
             PongBotQ.actual_base_ori_local << roll_MIC, pitch_MIC, yaw_MIC;
@@ -1287,7 +1309,7 @@ void imu_task(void *arg) {
             y_acc_set = Max_Value_Save(y_acc_set);
             z_acc_set = Max_Value_Save(z_acc_set);
 
-            if (abs(x_acc_set(1)) > 100000 || abs(y_acc_set(1)) > 100000 || abs(z_acc_set(1)) > 100000) {
+            if (abs(roll_set(1)) > 100000 || abs(pitch_set(1)) > 100000 || abs(yaw_set(1)) > 100000 || abs(roll_vel_set(1)) > 100000 || abs(pitch_vel_set(1)) > 100000 || abs(yaw_vel_set(1)) > 100000 || abs(x_acc_set(1)) > 100000 || abs(y_acc_set(1)) > 100000 || abs(z_acc_set(1)) > 100000) {
                 rt_printf("EEEEE\n");
                 for (int i = 0; i < MIC_length; i++) {
                     rt_printf("0x%X /", Receive_MIC_buf[i]);
@@ -1295,6 +1317,8 @@ void imu_task(void *arg) {
                         rt_printf("\n");
                     }
                 }
+                rt_printf("0x%4X \n", checksum);
+                rt_printf("\n");
             }
 
 //            rt_printf("Roll(max)=%f , Roll(now)=%f \n", roll_set(0) * R2D, roll_set(1) * R2D);
@@ -1308,11 +1332,13 @@ void imu_task(void *arg) {
 //            rt_printf("Xacc(max)=%f , Xacc(now)=%f \n", x_acc_set(0), x_acc_set(1));
 //            rt_printf("Yacc(max)=%f , Yacc(now)=%f \n", y_acc_set(0), y_acc_set(1));
 //            rt_printf("Zacc(max)=%f , Zacc(now)=%f \n", z_acc_set(0), z_acc_set(1));
-//            rt_printf("------- \n");
+//            rt_printf("________________________ \n");
 
             mic_flag1 = 0;
             data_start = 0;
-            memset(Receive_MIC_buf, 0, MIC_length);
+            
+            //memset(Receive_MIC_buf, 0, MIC_length);
+            
         } //else {
 //            cnt_over1++;
 //            printf("MIC_ = %5.5d\n", cnt_over1);
