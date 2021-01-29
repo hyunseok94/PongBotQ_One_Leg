@@ -65,6 +65,7 @@
 //JoyStick
 #include <sensor_msgs/Joy.h>
 
+#include <sensor_msgs/Imu.h>
 // IMU CoM
 #include <termios.h>
 #include <sys/types.h>
@@ -105,7 +106,7 @@ volatile int wkc;
 unsigned int cycle_ns = 1000000; // Control Cycle 1[ms]
 int recv_fail_cnt = 0;
 
-unsigned int n_fail=0;
+unsigned int n_fail = 0;
 
 // loop (main & thread)
 int main_run = 1;
@@ -156,6 +157,7 @@ double save_array[SAVE_COUNT][SAVE_LENGTH];
 ros::Subscriber S_Mode;
 ros::Subscriber S_Stop;
 ros::Subscriber S_Joystick;
+ros::Subscriber S_IMU;
 ros::Publisher P_data;
 int ros_exit = 0;
 std_msgs::Float64MultiArray m_data;
@@ -166,6 +168,7 @@ double Thread_time = 0.0;
 RT_TASK RT_task1;
 RT_TASK RT_task2;
 RT_TASK RT_task3;
+RT_TASK RT_task4;
 //RT_TASK RT_task3;
 //RT_MUTEX mutex_desc; //mutex
 RTIME now_time_realcheck, previous_time_realcheck; // Ethercat time
@@ -200,7 +203,8 @@ void ServoOff(void); // : Servo Off
 void Torque_Off(void);
 void motion_task(void* arg); // : Thread 1
 void print_task(void* arg); // : Thread 2
-void imu_task(void* arg);
+void imu_task(void* arg); // : Thread 3
+void imu_task2(void* arg);
 void catch_signal(int sig); // : Catch "Ctrl + C signal"
 bool ecat_init(void);
 
@@ -218,6 +222,7 @@ void Max_Time_Save(double now_time);
 void Callback1(const std_msgs::Int32 &msg);
 void Callback2(const std_msgs::Int32 &msg);
 void Callback3(const sensor_msgs::Joy& msg);
+void IMUCallback(const sensor_msgs::Imu& msg);
 
 void ROSMsgPublish(void);
 static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value);
@@ -225,7 +230,15 @@ static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value)
 static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value);
 
 int main(int argc, char* argv[]) {
+    //    mscl::Connection connection = mscl::Connection::Serial("/dev/ttyACM0", 230400);
+    std::string port;
+    int baudrate;
+    bool device_setup = false;
+    bool save_settings = true;
 
+    //mscl::Connection connection = mscl::Connection::Serial("/dev/ttyACM0", 115200);
+    //mscl::Connection connection = mscl::Connection::Serial("serial", 115200);
+    
     printf(" ROS Setting ...\n");
     ros::init(argc, argv, "elmo_pkgs");
     ros::NodeHandle nh;
@@ -237,6 +250,8 @@ int main(int argc, char* argv[]) {
     S_Mode = nh.subscribe("Mode", 1, Callback1);
     S_Stop = nh.subscribe("STOP", 1, Callback2);
     S_Joystick = nh.subscribe("joy", 1, &Callback3);
+    //S_IMU = nh.subscribe("/gx5/imu/data", 1, &IMUCallback);
+    
     P_data = nh.advertise<std_msgs::Float64MultiArray>("tmp_data", 1);
     P_joint_states = nh.advertise<sensor_msgs::JointState>("joint_states", 1);
 
@@ -266,16 +281,13 @@ int main(int argc, char* argv[]) {
     rt_task_create(&RT_task1, "Motion_task", 0, 99, 0);
     rt_task_create(&RT_task2, "Print_task", 0, 85, 0);
     rt_task_create(&RT_task3, "Imu_task", 0, 95, 0);
-    //rt_task_create(&RT_task3, "Imu_task", 0, 30, 0);
-    
-//    rt_task_create(&RT_task1, "Motion_task", 0, 80, 0);
-//    rt_task_create(&RT_task2, "Print_task", 0, 99, 0);
-//    rt_task_create(&RT_task3, "Imu_task", 0, 85, 0);
-    
+    //rt_task_create(&RT_task4, "Imu_task2", 0, 90, 0);
+
 
     rt_task_start(&RT_task1, &motion_task, NULL);
     rt_task_start(&RT_task2, &print_task, NULL);
     rt_task_start(&RT_task3, &imu_task, NULL);
+    //rt_task_start(&RT_task4, &imu_task2, NULL);
 
     // Thread Setting End
 
@@ -491,10 +503,10 @@ void motion_task(void* arg) {
 
         del_time_realcheck = (double) (now_time_realcheck - previous_time_realcheck) / 1000000;
         del_time_motion = (double) (now_time_motion - previous_time_motion) / 1000000;
-        
+
         motion_time_set(1) = del_time_realcheck;
         motion_time_set = Max_Value_Save(motion_time_set);
-       // DataSave();
+        // DataSave();
     }
     //    rt_task_sleep(cycle_ns);
 #ifdef _USE_DC
@@ -549,29 +561,28 @@ void print_task(void* arg) {
                 stick++;
             } else {
 
-                rt_printf("______________________________________________________________________________\n");
-                rt_printf("Thread_time : %f [ms] / %f [ms] / %f [ms] / %f [ms] / %f [ms]\n", del_time_realcheck, del_time_motion, del_time_print, del_time_imu_check, del_time_imu);
-                rt_printf("Motion Time(Max) : %f [ms] / IMU Time(Max) : %f [ms]\n", motion_time_set(0), IMU_time_set(0));
-
-
-                //                //                //                rt_printf("tmp_flag = %d \n", PongBotQ.tmp_Mode_Change_flag);
-                //                //                //                rt_printf("cnt  = %d \n", PongBotQ.cnt_mode_change);
-                //                //                //                rt_printf("flag = %d \n", PongBotQ.Mode_Change_flag);
-                //                //                //                rt_printf("Mode = %d \n", PongBotQ.ControlMode_print);
-                //                //                //                rt_printf("Status word = 0x%X / 0x%X / 0x%X \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord);
-                //                //                //                rt_printf("Actual Torque = %d / %d / %d \n", ELMO_drive_pt[0].ptInParam->TorqueActualValue, ELMO_drive_pt[1].ptInParam->TorqueActualValue, ELMO_drive_pt[2].ptInParam->TorqueActualValue);
-                //                //                rt_printf("Status word = 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord, ELMO_drive_pt[3].ptInParam->StatusWord, ELMO_drive_pt[4].ptInParam->StatusWord, ELMO_drive_pt[5].ptInParam->StatusWord, ELMO_drive_pt[6].ptInParam->StatusWord, ELMO_drive_pt[7].ptInParam->StatusWord, ELMO_drive_pt[8].ptInParam->StatusWord, ELMO_drive_pt[9].ptInParam->StatusWord, ELMO_drive_pt[10].ptInParam->StatusWord, ELMO_drive_pt[11].ptInParam->StatusWord);
-                rt_printf("-----------------------------------------------------------------------------\n");
-
-                rt_printf("Base_acc(m/s^2) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.actual_base_acc_local[0], PongBotQ.actual_base_acc_local[1], PongBotQ.actual_base_acc_local[2], x_acc_set(0), y_acc_set(0), z_acc_set(0));
-                rt_printf("Base_ori(degree) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f) \n", PongBotQ.actual_base_ori_local[0] * R2D, PongBotQ.actual_base_ori_local[1] * R2D, PongBotQ.actual_base_ori_local[2] * R2D, roll_set(0) * R2D, pitch_set(0) * R2D, yaw_set(0) * R2D);
-                rt_printf("Base_ori_vel(rad/s) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.actual_base_ori_vel_local[0], PongBotQ.actual_base_ori_vel_local[1], PongBotQ.actual_base_ori_vel_local[2], roll_vel_set(0), pitch_vel_set(0), yaw_vel_set(0));
-                rt_printf("actual_q(degree) = ( %3f / %3f/ %3f ), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_joint_pos[0] * R2D, PongBotQ.actual_joint_pos[1] * R2D, PongBotQ.actual_joint_pos[2] * R2D, PongBotQ.actual_joint_pos[3] * R2D, PongBotQ.actual_joint_pos[4] * R2D, PongBotQ.actual_joint_pos[5] * R2D, PongBotQ.actual_joint_pos[6] * R2D, PongBotQ.actual_joint_pos[7] * R2D, PongBotQ.actual_joint_pos[8] * R2D, PongBotQ.actual_joint_pos[9] * R2D, PongBotQ.actual_joint_pos[10] * R2D, PongBotQ.actual_joint_pos[11] * R2D);
-                //                //                //rt_printf("Incre_q(degree) = %3f / %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f \n", PongBotQ.Incre_actual_joint_pos[0] * R2D, PongBotQ.Incre_actual_joint_pos[1] * R2D, PongBotQ.Incre_actual_joint_pos[2] * R2D, PongBotQ.Incre_actual_joint_pos[3] * R2D, PongBotQ.Incre_actual_joint_pos[4] * R2D, PongBotQ.Incre_actual_joint_pos[5] * R2D, PongBotQ.Incre_actual_joint_pos[6] * R2D, PongBotQ.Incre_actual_joint_pos[7] * R2D, PongBotQ.Incre_actual_joint_pos[8] * R2D, PongBotQ.Incre_actual_joint_pos[9] * R2D, PongBotQ.Incre_actual_joint_pos[10] * R2D, PongBotQ.Incre_actual_joint_pos[11] * R2D);
-                rt_printf("actual_joint_vel(rad/s) = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_joint_vel[0], PongBotQ.actual_joint_vel[1], PongBotQ.actual_joint_vel[2], PongBotQ.actual_joint_vel[3], PongBotQ.actual_joint_vel[4], PongBotQ.actual_joint_vel[5], PongBotQ.actual_joint_vel[6], PongBotQ.actual_joint_vel[7], PongBotQ.actual_joint_vel[8], PongBotQ.actual_joint_vel[9], PongBotQ.actual_joint_vel[10], PongBotQ.actual_joint_vel[11]);
-                rt_printf("actual_EP_pos_local(FK) = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_EP_pos_local[0], PongBotQ.actual_EP_pos_local[1], PongBotQ.actual_EP_pos_local[2], PongBotQ.actual_EP_pos_local[3], PongBotQ.actual_EP_pos_local[4], PongBotQ.actual_EP_pos_local[5], PongBotQ.actual_EP_pos_local[6], PongBotQ.actual_EP_pos_local[7], PongBotQ.actual_EP_pos_local[8], PongBotQ.actual_EP_pos_local[9], PongBotQ.actual_EP_pos_local[10], PongBotQ.actual_EP_pos_local[11]);
-                //                //                rt_printf("cal_actual_joint_pos(IK) = %3f / %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f \n",PongBotQ.cal_actual_joint_pos[0] * R2D,PongBotQ.cal_actual_joint_pos[1] * R2D,PongBotQ.cal_actual_joint_pos[2] * R2D,PongBotQ.cal_actual_joint_pos[3] * R2D,PongBotQ.cal_actual_joint_pos[4] * R2D,PongBotQ.cal_actual_joint_pos[5] * R2D,PongBotQ.cal_actual_joint_pos[6] * R2D,PongBotQ.cal_actual_joint_pos[7] * R2D,PongBotQ.cal_actual_joint_pos[8] * R2D,PongBotQ.cal_actual_joint_pos[9] * R2D,PongBotQ.cal_actual_joint_pos[10] * R2D, PongBotQ.cal_actual_joint_pos[11] * R2D);
-                //
+//                rt_printf("______________________________________________________________________________\n");
+//                rt_printf("Thread_time : %f [ms] / %f [ms] / %f [ms] / %f [ms] / %f [ms]\n", del_time_realcheck, del_time_motion, del_time_print, del_time_imu_check, del_time_imu);
+//                rt_printf("Motion Time(Max) : %f [ms] / IMU Time(Max) : %f [ms]\n", motion_time_set(0), IMU_time_set(0));
+//
+//
+//                //                //                //                rt_printf("tmp_flag = %d \n", PongBotQ.tmp_Mode_Change_flag);
+//                //                //                //                rt_printf("cnt  = %d \n", PongBotQ.cnt_mode_change);
+//                //                //                //                rt_printf("flag = %d \n", PongBotQ.Mode_Change_flag);
+//                //                //                //                rt_printf("Mode = %d \n", PongBotQ.ControlMode_print);
+//                //                //                //                rt_printf("Status word = 0x%X / 0x%X / 0x%X \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord);
+//                //                //                //                rt_printf("Actual Torque = %d / %d / %d \n", ELMO_drive_pt[0].ptInParam->TorqueActualValue, ELMO_drive_pt[1].ptInParam->TorqueActualValue, ELMO_drive_pt[2].ptInParam->TorqueActualValue);
+//                //                //                rt_printf("Status word = 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X / 0x%X \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord, ELMO_drive_pt[3].ptInParam->StatusWord, ELMO_drive_pt[4].ptInParam->StatusWord, ELMO_drive_pt[5].ptInParam->StatusWord, ELMO_drive_pt[6].ptInParam->StatusWord, ELMO_drive_pt[7].ptInParam->StatusWord, ELMO_drive_pt[8].ptInParam->StatusWord, ELMO_drive_pt[9].ptInParam->StatusWord, ELMO_drive_pt[10].ptInParam->StatusWord, ELMO_drive_pt[11].ptInParam->StatusWord);
+//                rt_printf("-----------------------------------------------------------------------------\n");
+//
+//                rt_printf("Base_acc(m/s^2) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.actual_base_acc_local[0], PongBotQ.actual_base_acc_local[1], PongBotQ.actual_base_acc_local[2], x_acc_set(0), y_acc_set(0), z_acc_set(0));
+//                rt_printf("Base_ori(degree) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f) \n", PongBotQ.actual_base_ori_local[0] * R2D, PongBotQ.actual_base_ori_local[1] * R2D, PongBotQ.actual_base_ori_local[2] * R2D, roll_set(0) * R2D, pitch_set(0) * R2D, yaw_set(0) * R2D);
+//                rt_printf("Base_ori_vel(rad/s) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.actual_base_ori_vel_local[0], PongBotQ.actual_base_ori_vel_local[1], PongBotQ.actual_base_ori_vel_local[2], roll_vel_set(0), pitch_vel_set(0), yaw_vel_set(0));
+//                rt_printf("actual_q(degree) = ( %3f / %3f/ %3f ), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_joint_pos[0] * R2D, PongBotQ.actual_joint_pos[1] * R2D, PongBotQ.actual_joint_pos[2] * R2D, PongBotQ.actual_joint_pos[3] * R2D, PongBotQ.actual_joint_pos[4] * R2D, PongBotQ.actual_joint_pos[5] * R2D, PongBotQ.actual_joint_pos[6] * R2D, PongBotQ.actual_joint_pos[7] * R2D, PongBotQ.actual_joint_pos[8] * R2D, PongBotQ.actual_joint_pos[9] * R2D, PongBotQ.actual_joint_pos[10] * R2D, PongBotQ.actual_joint_pos[11] * R2D);
+//                //                //                //rt_printf("Incre_q(degree) = %3f / %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f \n", PongBotQ.Incre_actual_joint_pos[0] * R2D, PongBotQ.Incre_actual_joint_pos[1] * R2D, PongBotQ.Incre_actual_joint_pos[2] * R2D, PongBotQ.Incre_actual_joint_pos[3] * R2D, PongBotQ.Incre_actual_joint_pos[4] * R2D, PongBotQ.Incre_actual_joint_pos[5] * R2D, PongBotQ.Incre_actual_joint_pos[6] * R2D, PongBotQ.Incre_actual_joint_pos[7] * R2D, PongBotQ.Incre_actual_joint_pos[8] * R2D, PongBotQ.Incre_actual_joint_pos[9] * R2D, PongBotQ.Incre_actual_joint_pos[10] * R2D, PongBotQ.Incre_actual_joint_pos[11] * R2D);
+//                rt_printf("actual_joint_vel(rad/s) = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_joint_vel[0], PongBotQ.actual_joint_vel[1], PongBotQ.actual_joint_vel[2], PongBotQ.actual_joint_vel[3], PongBotQ.actual_joint_vel[4], PongBotQ.actual_joint_vel[5], PongBotQ.actual_joint_vel[6], PongBotQ.actual_joint_vel[7], PongBotQ.actual_joint_vel[8], PongBotQ.actual_joint_vel[9], PongBotQ.actual_joint_vel[10], PongBotQ.actual_joint_vel[11]);
+//                rt_printf("actual_EP_pos_local(FK) = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_EP_pos_local[0], PongBotQ.actual_EP_pos_local[1], PongBotQ.actual_EP_pos_local[2], PongBotQ.actual_EP_pos_local[3], PongBotQ.actual_EP_pos_local[4], PongBotQ.actual_EP_pos_local[5], PongBotQ.actual_EP_pos_local[6], PongBotQ.actual_EP_pos_local[7], PongBotQ.actual_EP_pos_local[8], PongBotQ.actual_EP_pos_local[9], PongBotQ.actual_EP_pos_local[10], PongBotQ.actual_EP_pos_local[11]);
+//                //                //                rt_printf("cal_actual_joint_pos(IK) = %3f / %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f/ %3f \n",PongBotQ.cal_actual_joint_pos[0] * R2D,PongBotQ.cal_actual_joint_pos[1] * R2D,PongBotQ.cal_actual_joint_pos[2] * R2D,PongBotQ.cal_actual_joint_pos[3] * R2D,PongBotQ.cal_actual_joint_pos[4] * R2D,PongBotQ.cal_actual_joint_pos[5] * R2D,PongBotQ.cal_actual_joint_pos[6] * R2D,PongBotQ.cal_actual_joint_pos[7] * R2D,PongBotQ.cal_actual_joint_pos[8] * R2D,PongBotQ.cal_actual_joint_pos[9] * R2D,PongBotQ.cal_actual_joint_pos[10] * R2D, PongBotQ.cal_actual_joint_pos[11] * R2D);
                 //                rt_printf("angle=%3f / %3f / %3f \n", PongBotQ.actual_base_ori_local(0) * R2D, PongBotQ.actual_base_ori_local(1) * R2D, PongBotQ.actual_base_ori_local(2) * R2D);
                 //  rt_printf("angle=%3f / %3f / %3f \n", PongBotQ.actual_base_ori_local(0), PongBotQ.actual_base_ori_local(1), PongBotQ.actual_base_ori_local(2));
                 //  rt_printf("angle_vel=%3f / %3f / %3f \n", PongBotQ.actual_base_ori_vel_local(0), PongBotQ.actual_base_ori_vel_local(1), PongBotQ.actual_base_ori_vel_local(2));
@@ -639,6 +650,7 @@ void catch_signal(int sig) {
     rt_task_delete(&RT_task1);
     rt_task_delete(&RT_task2);
     rt_task_delete(&RT_task3);
+    rt_task_delete(&RT_task4);
     ros::shutdown();
     exit(0);
 }
@@ -837,7 +849,7 @@ void Callback3(const sensor_msgs::Joy& msg) {
     if ((int) msg.buttons[3] == 1) { //takeoff
         PongBotQ.JoyMode = JOYMODE_MOVE;
     }
-        PongBotQ.JoyMode = JOYMODE_WALK;
+    PongBotQ.JoyMode = JOYMODE_WALK;
 
     if ((int) msg.buttons[1] == 1) { //takeoff
         PongBotQ.cnt_HS = 0;
@@ -850,6 +862,24 @@ void Callback3(const sensor_msgs::Joy& msg) {
     if ((int) msg.buttons[4] == 1) {
         PongBotQ.walk_stop_flag = false;
     }
+    cout << "s1=" << msg.axes[0] << "s2=" << msg.axes[1] << "s2=" << msg.axes[2] << "s3="<<msg.axes[3] << "s4=" << msg.axes[4] << endl;
+    cout << "b0=" << msg.buttons[0] << ",b1=" << msg.buttons[1] << ",b2=" << msg.buttons[2] << ",b3=" << msg.buttons[3] << ",b4=" << msg.buttons[4] << ",b5=" << msg.buttons[5] << ",b6=" << msg.buttons[6] << ",b7=" << msg.buttons[7] << ",b8=" << msg.buttons[8] << endl;
+    cout << "-----" << endl;
+}
+
+void IMUCallback(const sensor_msgs::Imu& msg) {
+    PongBotQ.actual_quaternion(0)=msg.orientation.x;
+    PongBotQ.actual_quaternion(1)=msg.orientation.y;
+    PongBotQ.actual_quaternion(2)=msg.orientation.z;
+    PongBotQ.actual_quaternion(3)=msg.orientation.w;
+
+    PongBotQ.actual_base_ori_vel_local2(0)=msg.angular_velocity.x;
+    PongBotQ.actual_base_ori_vel_local2(1)=msg.angular_velocity.x;
+    PongBotQ.actual_base_ori_vel_local2(2)=msg.angular_velocity.x;
+    
+    PongBotQ.actual_base_acc_local2(0)=msg.linear_acceleration.x;
+    PongBotQ.actual_base_acc_local2(1)=msg.linear_acceleration.y;
+    PongBotQ.actual_base_acc_local2(2)=msg.linear_acceleration.z;
 }
 
 void ROSMsgPublish(void) {
@@ -858,14 +888,14 @@ void ROSMsgPublish(void) {
     m_data.data[0] = PongBotQ.actual_base_ori_local[0] * R2D;
     m_data.data[1] = PongBotQ.actual_base_ori_local[1] * R2D;
     m_data.data[2] = PongBotQ.actual_base_ori_local[2] * R2D;
-    
-//    m_data.data[2] = PongBotQ.target_joint_vel_HS[2];
-//    m_data.data[1] = PongBotQ.actual_joint_pos_HS[1] * R2D;
-//    m_data.data[2] = PongBotQ.actual_joint_pos_HS[2] * R2D;
-//    
-//    m_data.data[3] = PongBotQ.target_joint_pos_HS[0] * R2D;
-//    m_data.data[4] = PongBotQ.target_joint_pos_HS[1] * R2D;
-//    m_data.data[5] = PongBotQ.target_joint_pos_HS[2] * R2D;
+
+    //    m_data.data[2] = PongBotQ.target_joint_vel_HS[2];
+    //    m_data.data[1] = PongBotQ.actual_joint_pos_HS[1] * R2D;
+    //    m_data.data[2] = PongBotQ.actual_joint_pos_HS[2] * R2D;
+    //    
+    //    m_data.data[3] = PongBotQ.target_joint_pos_HS[0] * R2D;
+    //    m_data.data[4] = PongBotQ.target_joint_pos_HS[1] * R2D;
+    //    m_data.data[5] = PongBotQ.target_joint_pos_HS[2] * R2D;
 
     m_joint_states.header.stamp = ros::Time::now();
     m_joint_states.name[0] = "HR_JOINT";
@@ -907,20 +937,20 @@ void DataSave(void) {
     //    save_array[save_cnt][5] = PongBotQ.target_joint_pos_HS[0] * R2D;
     //    save_array[save_cnt][6] = PongBotQ.target_joint_pos_HS[1] * R2D;
     //    save_array[save_cnt][7] = PongBotQ.target_joint_pos_HS[2] * R2D;
-//    for (int i=0;i<48;i++){
-//     save_array[save_cnt][i] = Receive_MIC_buf[i];    
-//    }
-    
-    
+    //    for (int i=0;i<48;i++){
+    //     save_array[save_cnt][i] = Receive_MIC_buf[i];    
+    //    }
+
+
     //    save_array[save_cnt][3] = ELMO_drive_pt[0].ptInParam->StatusWord;
     //    save_array[save_cnt][4] = ELMO_drive_pt[1].ptInParam->StatusWord;
     //    save_array[save_cnt][5] = ELMO_drive_pt[2].ptInParam->StatusWord;
     //    save_array[save_cnt][6] = ELMO_drive_pt[0].ptInParam->TorqueActualValue;
     //    save_array[save_cnt][7] = ELMO_drive_pt[1].ptInParam->TorqueActualValue;
     //    save_array[save_cnt][8] = ELMO_drive_pt[2].ptInParam->TorqueActualValue;
-//    save_array[save_cnt][3] = PongBotQ.actual_joint_pos[0] * R2D;
-//    save_array[save_cnt][4] = PongBotQ.actual_joint_pos[1] * R2D;
-//    save_array[save_cnt][5] = PongBotQ.actual_joint_pos[2] * R2D;
+    //    save_array[save_cnt][3] = PongBotQ.actual_joint_pos[0] * R2D;
+    //    save_array[save_cnt][4] = PongBotQ.actual_joint_pos[1] * R2D;
+    //    save_array[save_cnt][5] = PongBotQ.actual_joint_pos[2] * R2D;
 
     if (save_cnt < SAVE_COUNT - 1) {
         save_cnt++;
@@ -934,10 +964,10 @@ void FileSave(void) {
 
     for (int j = 0; j <= SAVE_COUNT - 1; ++j) {
         for (int i = 0; i <= SAVE_LENGTH - 1; ++i) {
-            fprintf(fp, "%d ",(int)save_array[j][i]);
-//            fprintf(fp, "%c\t", save_array[j][i]);
+            fprintf(fp, "%d ", (int) save_array[j][i]);
+            //            fprintf(fp, "%c\t", save_array[j][i]);
         }
-        fprintf(fp, "%d\n", (int)save_array[j][SAVE_LENGTH - 1]);
+        fprintf(fp, "%d\n", (int) save_array[j][SAVE_LENGTH - 1]);
         //fprintf(fp, "%c\n", save_array[j][SAVE_LENGTH - 1]);
     }
 
@@ -1078,9 +1108,9 @@ bool ecat_init(void) {
 }
 
 int IMU_initialize() {
-    
+
     struct termios oldtio, newtio;
-    
+
     fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
     // dev/ttyACM0 
     // O_RDWF : Use write/read mode with fd(file descriptor) 
@@ -1093,10 +1123,10 @@ int IMU_initialize() {
     tcgetattr(fd_MIC, &oldtio);
     bzero(&newtio, sizeof (newtio));
 
-    //newtio.c_cflag = B115200 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
-    //newtio.c_cflag = B230400 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+    // newtio.c_cflag = B115200 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+    newtio.c_cflag = B230400 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
     //newtio.c_cflag = B460800 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
-    newtio.c_cflag = B921600 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+    //newtio.c_cflag = B921600 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
     newtio.c_iflag = IGNPAR | ICRNL; //Parity 오류가 있는 문자 무시
     newtio.c_oflag = 0; //출력처리 설정 0이면 아무것도 안함
     newtio.c_lflag = 0; //Local Mode 설정, ICANON이면 널 문자가 들어올때까지 수신
@@ -1106,10 +1136,10 @@ int IMU_initialize() {
     newtio.c_cc[VKILL] = 0;
     newtio.c_cc[VEOF] = 4;
     newtio.c_cc[VTIME] = 0; //time-out 값으로 사용, time-out 값은 TIME*0.1초
-    
+
     //newtio.c_cc[VMIN] = 1; //read가 리턴되기 위한 최소한의 문자 개수
     newtio.c_cc[VMIN] = 0; //read가 리턴되기 위한 최소한의 문자 개수
-    
+
     newtio.c_cc[VSWTC] = 0;
     newtio.c_cc[VSTART] = 0;
     newtio.c_cc[VSTOP] = 0;
@@ -1133,23 +1163,13 @@ int IMU_initialize() {
 void imu_task(void *arg) {
     unsigned int MIC_length = 48;
     unsigned char Receive_MIC_buf[MIC_length];
-    unsigned char Test_buf[2];
-    
-    Test_buf[0]=0x01;
-    Test_buf[1]=0x02;
-//    Test_buf[2]=0x13;
-//    Test_buf[3]=0x4a;
-//    Test_buf[4]=0x58;
 
-    //rt_task_set_periodic(NULL, TM_NOW, 20*cycle_ns);
-//    rt_task_set_periodic(NULL, TM_NOW, 4*cycle_ns);
-    rt_task_set_periodic(NULL, TM_NOW, 2*cycle_ns);
     //rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
-    
+    rt_task_set_periodic(NULL, TM_NOW, 2 * cycle_ns);
+    //rt_task_set_periodic(NULL, TM_NOW, 4*cycle_ns);
     //rt_task_set_periodic(NULL, TM_NOW, 5*cycle_ns); //소
     //rt_task_set_periodic(NULL, TM_NOW, 10*cycle_ns);
-
-    //unsigned char Receive_MIC_buf[MIC_length];
+    //rt_task_set_periodic(NULL, TM_NOW, 20*cycle_ns);
 
     uint32_t roll_MIC_f = 0;
     uint32_t pitch_MIC_f = 0;
@@ -1158,7 +1178,7 @@ void imu_task(void *arg) {
     uint32_t Gyro_X_MIC_f = 0;
     uint32_t Gyro_Y_MIC_f = 0;
     uint32_t Gyro_Z_MIC_f = 0;
-    
+
     uint32_t Acc_X_MIC_f = 0;
     uint32_t Acc_Y_MIC_f = 0;
     uint32_t Acc_Z_MIC_f = 0;
@@ -1166,65 +1186,62 @@ void imu_task(void *arg) {
     float roll_MIC = 0, pitch_MIC = 0, yaw_MIC = 0;
     float Gyro_X_MIC = 0, Gyro_Y_MIC = 0, Gyro_Z_MIC = 0;
     float Acc_X_MIC = 0, Acc_Y_MIC = 0, Acc_Z_MIC = 0;
-    
+
     const double PI_IMU = 3.1415927f;
     int cnt_over1 = 0;
     int mic_flag1 = 0;
     int buf_index = 0;
     int data_start = 0;
 
-    
-       memset(Receive_MIC_buf, 0, MIC_length);
-       
+    memset(Receive_MIC_buf, 0, MIC_length);
+
     while (imu_run == 1) {
-        
         rt_task_wait_period(NULL);
         previous_time_imu = now_time_imu;
         previous_time_imu_check = rt_timer_read();
-        // Sensor Read
-        // -----> Upload Sensor data-> shared meomry
-        // Sensor Read by Hyun Do & kyung min
-        //MIC_IMU sensor
-        // Clear Receive_MIC_buf bytes as 0
-        
-       // rt_printf("\n---Data start---------\n-");
-        //Data Read
-//        rt_printf("%d \n",sizeof(fd_MIC));
+        //         memset(Receive_MIC_buf, 0, MIC_length);
 
-        //        rt_printf("%s \n",fd_MIC);
-//         memset(Receive_MIC_buf, 0, MIC_length);
+        uint8_t checksum_byte1 = 0, checksum_byte2 = 0;
 
         if (mic_flag1 == 0) {
             for (int j = 0; j < MIC_length; ++j) {
                 read(fd_MIC, Receive_MIC_buf + j, 1);
+                if (j < MIC_length - 2) {
+                    checksum_byte1 += Receive_MIC_buf[j];
+                    checksum_byte2 += checksum_byte1;
+                }
             } //rt_printf("\n");    
         }
-                
+
+        //        
+        //        uint16_t checksum = 0;
+        //        for (int i = 0; i < MIC_length - 2; i++) {
+        //           
+        //        }
+
         tcflush(fd_MIC, TCIFLUSH);
         //tcflush(fd_MIC, TCIOFLUSH);
         //rt_printf("\n");
         //rt_printf("flush = %d\n",flush_check);
-//        if(flush_check!=0){
-//            rt_printf("Flush Error!\n");
-//        }
-        
-                   
-        now_time_imu_check = rt_timer_read();
-//        for(int i=0;i<MIC_length;i++){
-//            rt_printf("0x%X /", Receive_MIC_buf[i]);
-//            if (i % 10 == 9) {
-//                rt_printf("\n");
-//            }
-//        }
+        //        if(flush_check!=0){
+        //            rt_printf("Flush Error!\n");
+        //        }
+
+        //        for(int i=0;i<MIC_length;i++){
+        //            rt_printf("0x%X /", Receive_MIC_buf[i]);
+        //            if (i % 10 == 9) {
+        //                rt_printf("\n");
+        //            }
+        //        }
 
 
-        uint8_t checksum_byte1 = 0, checksum_byte2 = 0;
-        uint16_t checksum = 0;
-        for (int i = 0; i < MIC_length - 2; i++) {
-            checksum_byte1 += Receive_MIC_buf[i];
-            checksum_byte2 += checksum_byte1;
-        }
-        checksum = ((uint16_t) checksum_byte1 << 8) + (uint16_t) checksum_byte2;
+        //        uint8_t checksum_byte1 = 0, checksum_byte2 = 0;
+        //        uint16_t checksum = 0;
+        //        for (int i = 0; i < MIC_length - 2; i++) {
+        //            checksum_byte1 += Receive_MIC_buf[i];
+        //            checksum_byte2 += checksum_byte1;
+        //        }
+        //checksum = ((uint16_t) checksum_byte1 << 8) + (uint16_t) checksum_byte2;
 
         if (Receive_MIC_buf[MIC_length - 2] == checksum_byte1 && Receive_MIC_buf[MIC_length - 1] == checksum_byte2) {
             if (Receive_MIC_buf[0] == 0x75 && Receive_MIC_buf[1] == 0x65 && Receive_MIC_buf[2] == 0x80 && Receive_MIC_buf[3] == 0x2a && Receive_MIC_buf[4] == 0x0E && Receive_MIC_buf[5] == 0x0C && Receive_MIC_buf[18] == 0x0E && Receive_MIC_buf[19] == 0x05 && Receive_MIC_buf[32] == 0x0E && Receive_MIC_buf[33] == 0x04) {
@@ -1242,11 +1259,9 @@ void imu_task(void *arg) {
         } else {
             n_fail++;
         }
-         //rt_printf("fail_num=%d\n", n_fail);
-       
-        //Data Save (42=Pay load's length)
+        //rt_printf("fail_num=%d\n", n_fail);
+
         if (mic_flag1 == 1) {
-//            //MIC IMU
             roll_MIC_f = Receive_MIC_buf[data_start] << 24 | Receive_MIC_buf[data_start + 1] << 16 | Receive_MIC_buf[data_start + 2] << 8 | Receive_MIC_buf[data_start + 3];
             pitch_MIC_f = Receive_MIC_buf[data_start + 4] << 24 | Receive_MIC_buf[data_start + 5] << 16 | Receive_MIC_buf[data_start + 6] << 8 | Receive_MIC_buf[data_start + 7];
             yaw_MIC_f = Receive_MIC_buf[data_start + 8] << 24 | Receive_MIC_buf[data_start + 9] << 16 | Receive_MIC_buf[data_start + 10] << 8 | Receive_MIC_buf[data_start + 11];
@@ -1277,10 +1292,9 @@ void imu_task(void *arg) {
             Acc_Z_MIC = *(float*) &Acc_Z_MIC_f;
             Acc_Z_MIC = Acc_Z_MIC;
 
-            if (roll_MIC >= -180 * D2R && roll_MIC <= 0){
-                 roll_MIC = roll_MIC + 180.0 * D2R;
-            }
-            else if (roll_MIC<=180*D2R && roll_MIC>=0){
+            if (roll_MIC >= -180 * D2R && roll_MIC <= 0) {
+                roll_MIC = roll_MIC + 180.0 * D2R;
+            } else if (roll_MIC <= 180 * D2R && roll_MIC >= 0) {
                 roll_MIC = roll_MIC - 180.0 * D2R;
             }
 
@@ -1317,48 +1331,29 @@ void imu_task(void *arg) {
                         rt_printf("\n");
                     }
                 }
-                rt_printf("0x%4X \n", checksum);
+                // rt_printf("0x%4X \n", checksum);
                 rt_printf("\n");
             }
 
-//            rt_printf("Roll(max)=%f , Roll(now)=%f \n", roll_set(0) * R2D, roll_set(1) * R2D);
-//            rt_printf("Pitch(max)=%f , Pitch(now)=%f \n", pitch_set(0) * R2D, pitch_set(1) * R2D);
-//            rt_printf("Yaw(max)=%f , Yaw(now)=%f \n", yaw_set(0) * R2D, yaw_set(1) * R2D);
-//            rt_printf("------- \n");
-//            rt_printf("Roll_vel(max)=%f , Roll_vel(now)=%f \n", roll_vel_set(0), roll_vel_set(1));
-//            rt_printf("Pitch_vel(max)=%f , Pitch_vel(now)=%f \n", pitch_vel_set(0), pitch_vel_set(1));
-//            rt_printf("Yaw_vel(max)=%f , Yaw_vel(now)=%f \n", yaw_vel_set(0), yaw_vel_set(1));
-//            rt_printf("------- \n");
-//            rt_printf("Xacc(max)=%f , Xacc(now)=%f \n", x_acc_set(0), x_acc_set(1));
-//            rt_printf("Yacc(max)=%f , Yacc(now)=%f \n", y_acc_set(0), y_acc_set(1));
-//            rt_printf("Zacc(max)=%f , Zacc(now)=%f \n", z_acc_set(0), z_acc_set(1));
-//            rt_printf("________________________ \n");
-
             mic_flag1 = 0;
             data_start = 0;
-            
-            //memset(Receive_MIC_buf, 0, MIC_length);
-            
-        } //else {
-//            cnt_over1++;
-//            printf("MIC_ = %5.5d\n", cnt_over1);
-//        }
-         //now_time_imu = rt_timer_read();
+
+            memset(Receive_MIC_buf, 0, MIC_length);
+        }
+
         now_time_imu_check = rt_timer_read();
         now_time_imu = rt_timer_read();
-        
+
         del_time_imu_check = (double) (now_time_imu_check - previous_time_imu_check) / 1000000;
         del_time_imu = (double) (now_time_imu - previous_time_imu) / 1000000;
-        
+
         IMU_time_set(1) = del_time_imu_check;
         IMU_time_set = Max_Value_Save(IMU_time_set);
-        
+
         //rt_printf("\n -----Data End--------\n");
     }
-    //    tcsetattr(fd_MIC,TCSANOW,&oldtio);
-
+    //tcsetattr(fd_MIC,TCSANOW,&oldtio);
 }
-
 
 VectorXd Max_Value_Save(VectorXd Value_set) {
     VectorNd new_Value_set(2);
@@ -1387,3 +1382,17 @@ static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value)
     return wkc;
 }
 
+void imu_task2(void *arg) {
+    rt_task_set_periodic(NULL, TM_NOW, 1 * cycle_ns);
+
+
+
+    //create the BaseStation, passing in the connection
+    //    mscl::Connection connection = mscl::Connection::Serial("ttyACM0", 230400);
+    //mscl::BaseStation basestation(connection);
+
+    while (imu_run == 1) {
+        rt_task_wait_period(NULL);
+
+    }
+}

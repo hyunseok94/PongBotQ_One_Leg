@@ -361,6 +361,12 @@ public:
     VectorNd tmp_actual_base_ori_vel_local=VectorNd::Zero(3);
     VectorNd pre_actual_base_ori_loacl=VectorNd::Zero(3);
     
+    VectorNd actual_quaternion = VectorNd::Zero(4);
+    VectorNd actual_base_ori_local2 = VectorNd::Zero(3);
+    VectorNd actual_base_ori_vel_local2 = VectorNd::Zero(3);
+    VectorNd actual_base_acc_local2 = VectorNd::Zero(3);
+    
+    
 //VectorNd tmp_actual_joint_vel_HS = VectorNd::Zero(9);
 //    VectorNd init_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
 //    VectorNd target_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);

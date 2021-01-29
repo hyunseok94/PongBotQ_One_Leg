@@ -36,7 +36,15 @@ find_package(catkin REQUIRED COMPONENTS
  message_generation
  geometry_msgs
  tf
+ roslint
+ nav_msgs
 )
+
+find_library(MSCL_LIB_PATH NAMES libmscl.so PATHS "/usr/share/c++-mscl" DOC "MSCL Library" NO_DEFAULT_PATH)
+find_library(BOOST_LIB_PATH NAMES libboost_chrono.so PATHS "/usr/share/c++-mscl/Boost/lib" NO_DEFAULT_PATH)
+set(MSCL_INC_PATH "/usr/share/c++-mscl/source")
+set(BOOST_INC_PATH "/usr/share/c++-mscl/Boost/include")
+set(MSCL_LIB "usr/share/c++-mscl")
 
 catkin_package(
   INCLUDE_DIRS include   # "include" folder 
@@ -64,13 +72,22 @@ include_directories(
  /usr/xenomai/include/alchemy
  /usr/xenomai/lib
  /usr/xenomai/
+ ${MSCL_LIB}
+ ${MSCL_INC_PATH}
+ ${MSCL_INC}  #?
+ ${MIPLIBINC}  #?
+ ${MIPUTILINC}  #?
+ include/MSCL
 )
 
 # Xenomai setting
 execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
 execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
 ## Xenomai Setting end
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
+
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__ -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-format -fno-builtin-memcpy")
 
 # To Set executable file's location to ${PROJECT_SOURCE_DIR}/bin.
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
@@ -79,7 +96,7 @@ SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 add_executable(elmo_pkgs_exe ${SRC_FILES})
 
 # To specify which libraries an executable target links against.
-target_link_libraries(elmo_pkgs_exe ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
+target_link_libraries(elmo_pkgs_exe ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY} ${MSCL_LIB_PATH})
 #examples
 #add_subdirectory(examples/xenomai_test)
 #add_subdirectory(examples/soem_test)
