@@ -53,7 +53,97 @@ INT16 CRobot::Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedC
 }
 
 void CRobot::setRobotModel(Model* getModel) {
+    printf( "Set Robot Model... \n" );
+    
+     //Mode = MODE_SIMULATION;
+     Mode = MODE_ACTUAL_ROBOT;
+     WH_Mode = QP_CON; //QP_CON;// MPC_CON
+     
+    //============= [Controller OnOff Init]================ //
+    //    Base_Ori_Con_onoff_flag = false; //false; //true; //true;
+    CP_con_onoff_flag = false; //true; //false;//true;
+    Slope_con_onoff_flag = true; //true; //false;//true;
+    gain_scheduling_flag = true;
+    // =========== [Controller OnOff End] ================ //
 
+    RL_base2hip_pos << -0.350, 0.115, -0.053;
+    RR_base2hip_pos << -0.350, -0.115, -0.053;
+    FL_base2hip_pos << 0.350, 0.115, -0.053;
+    FR_base2hip_pos << 0.350, -0.115, -0.053;
+        
+    base2hip_pos << RL_base2hip_pos, RR_base2hip_pos, FL_base2hip_pos, FR_base2hip_pos;
+
+    // global init foot position
+    tar_init_RL_foot_pos << RL_base2hip_pos(0), RL_base2hip_pos(1) + 0.105 - 0.04, 0.0;
+    tar_init_RR_foot_pos << RR_base2hip_pos(0), RR_base2hip_pos(1) - 0.105 + 0.04, 0.0;
+    tar_init_FL_foot_pos << FL_base2hip_pos(0), FL_base2hip_pos(1) + 0.105 - 0.04, 0.0;
+    tar_init_FR_foot_pos << FR_base2hip_pos(0), FR_base2hip_pos(1) - 0.105 + 0.04, 0.0;
+    
+    com_height = 0.42; //0.42;
+//    
+    if (Mode == MODE_SIMULATION) {
+        set_simul_para();
+    } else if (Mode == MODE_ACTUAL_ROBOT) {
+        set_act_robot_para();
+    }
+
+    RL_foot_pos = tar_init_RL_foot_pos;
+    RR_foot_pos = tar_init_RR_foot_pos;
+    FL_foot_pos = tar_init_FL_foot_pos;
+    FR_foot_pos = tar_init_FR_foot_pos;
+    
+    init_base_pos << 0, 0, com_height;
+    init_base_ori << 0, 0, 0;
+    base_pos = init_base_pos;
+    base_ori = init_base_ori;
+    base_vel << 0, 0, 0;
+    base_ori_dot << 0, 0, 0;
+    base_pos_ori << init_base_pos, init_base_ori;
+
+    init_Kp_q = Kp_q;
+    init_Kd_q = Kd_q;
+
+    x_moving_speed = 0;
+    y_moving_speed = 0;
+
+    // Link com position
+    p_base2body_com << -0.038, 0, -0.01, 1;
+    p_RL_hp_com << 0, -0.0029, 0, 1;
+    p_RL_thigh_com << -0.001, -0.006, -0.0227, 1;
+    p_RL_calf_com << 0, 0.003, -0.094, 1;
+    p_RR_hp_com << 0, 0.0029, 0, 1;
+    p_RR_thigh_com << -0.001, 0.006, -0.0227, 1;
+    p_RR_calf_com << 0, -0.003, -0.094, 1;
+    p_FL_hp_com << 0, -0.0029, 0, 1;
+    p_FL_thigh_com << -0.001, -0.006, -0.0227, 1;
+    p_FL_calf_com << 0, 0.003, -0.094, 1;
+    p_FR_hp_com << 0, 0.0029, 0, 1;
+    p_FR_thigh_com << -0.001, 0.006, -0.0227, 1;
+    p_FR_calf_com << 0, -0.003, -0.094, 1;
+
+    target_EP << tar_init_RL_foot_pos - init_base_pos, tar_init_RR_foot_pos - init_base_pos, tar_init_FL_foot_pos - init_base_pos, tar_init_FR_foot_pos - init_base_pos;
+    //target_pos = IK1(target_EP);
+    
+    VectorNd com_offset = VectorNd::Zero(3);
+    VectorNd tmp_init_com_pos = VectorNd::Zero(3);
+
+    com_offset << 0.0, 0, 0;
+    //com_offset << 0.02, 0, 0;
+    //com_offset << 0.0, 0, 0;
+//
+    tmp_init_com_pos = Get_COM(base_pos_ori, target_pos);
+    init_com_pos = tmp_init_com_pos + com_offset;
+    
+    printf("--> tmp_init_com_pos= ( %3f / %3f/ %3f ) \n", tmp_init_com_pos(0), tmp_init_com_pos(1), tmp_init_com_pos(2));
+    printf("--> init_com_pos= ( %3f / %3f/ %3f ) \n", init_com_pos(0), init_com_pos(1), init_com_pos(2));
+
+    base_offset = init_base_pos - init_com_pos;
+    printf("--> base_offset= ( %3f / %3f/ %3f ) \n", base_offset(0), base_offset(1), base_offset(2));
+    tar_init_com_pos << 0.0, 0.0, com_height;
+    tar_init_com_vel << 0.0, 0.0, 0.0;    
+    contact_num = 4;
+    
+    // ==========================[RBDL Setting Init]===========================//
     m_pModel = getModel;
     m_pModel->gravity = Vector3d(0., 0., -9.81);
     nDOF = m_pModel->dof_count - 6; //* get Degree of freedom, Except x,y,z,roll,pitch,yaw of the robot
@@ -64,8 +154,8 @@ void CRobot::setRobotModel(Model* getModel) {
     RobotState2dot = VectorNd::Zero(18);
     BasePosOri = VectorNd::Zero(6);
     BaseVel = VectorNd::Zero(6);
-    //    JointAngle = VectorNd::Zero(nDOF);
-    //    JointVel = VectorNd::Zero(nDOF);
+    JointAngle = VectorNd::Zero(nDOF);
+    JointVel = VectorNd::Zero(nDOF);
 
     base.ID = m_pModel->GetBodyId("BODY");
     RL.ID = m_pModel->GetBodyId("RL_CALF");
@@ -73,68 +163,172 @@ void CRobot::setRobotModel(Model* getModel) {
     FL.ID = m_pModel->GetBodyId("FL_CALF");
     FR.ID = m_pModel->GetBodyId("FR_CALF");
 
-
     QQ << 0, 0, 0, 1;
     m_pModel->SetQuaternion(base.ID, QQ, RobotState);
-
+    // ======================[RBDL Setting End]=========================//
+    
+    init_target_pos << 0, 45, -90, 0, 45, -90, 0, 45, -90, 0, 45, -90;
+    
     for (unsigned int i = 0; i < nDOF; ++i) {
         joint[i].torque = 0;
     }
+    
+    IMURoll = 0;
+    IMUPitch = 0;
+    IMUYaw = 0;
+    moving_done_flag = true;
+    walk_ready_moving_done_flag = false;
+    
+    for (unsigned int i = 0; i < 6; ++i) {
+        pd_con_joint[i] = 0;
+        pd_con_task[i] = 0;
+    }
+    
+    tmp_CTC_Torque = CTC_Torque;
+    
+    if (WH_Mode == QP_CON) {
+        QP_Con_Init();
+        //set_osqp_HS();
+    }
+    
+    //Get_gain_HS();
+}
 
-    base.currentX = 0;
-    base.currentY = 0;
-    base.currentZ = 0;
-    base.currentRoll = 0;
-    base.currentPitch = 0;
-    base.currentYaw = 0;
-    base.currentXvel = 0;
-    base.currentYvel = 0;
-    base.currentZvel = 0;
-    base.currentRollvel = 0;
-    base.currentPitchvel = 0;
-    base.currentYawvel = 0;
+void CRobot::StateUpdate(void) {
+    RobotState(AXIS_X) = base_pos(0);
+    RobotState(AXIS_Y) = base_pos(1);
+    RobotState(AXIS_Z) = base_pos(2);
+    RobotState(AXIS_Roll) = base_ori(0);
+    RobotState(AXIS_Pitch) = base_ori(1);
+    RobotState(AXIS_Yaw) = base_ori(2);
+    RobotStatedot(AXIS_X) = base_vel(0);
+    RobotStatedot(AXIS_Y) = base_vel(1);
+    RobotStatedot(AXIS_Z) = base_vel(2);
+    RobotStatedot(AXIS_Roll) = base_ori_dot(0);
+    RobotStatedot(AXIS_Pitch) = base_ori_dot(1);
+    RobotStatedot(AXIS_Yaw) = base_ori_dot(2);
+
+    for (int nJoint = 0; nJoint < nDOF; nJoint++) {
+        RobotState(6 + nJoint) = actual_pos[nJoint];
+        RobotStatedot(6 + nJoint) = actual_vel[nJoint];
+        RobotState2dot(6 + nJoint) = actual_acc[nJoint];
+    }
+
+    base_ori_quat = Math::Quaternion::fromXYZAngles(base_ori);
+    Math::Quaternion QQ(base_ori_quat);
+    m_pModel->SetQuaternion(base.ID, QQ, RobotState);
+    
+    FK2();
+    
+    //Get_act_com();
 }
 
 void CRobot::ComputeTorqueControl(void) {
+	// ================= Cal Jacobian ================= //
+	//	cout << "1" << endl;
 
-    RobotState(AXIS_X) = base.currentX;
-    RobotState(AXIS_Y) = base.currentY;
-    RobotState(AXIS_Z) = base.currentZ;
-    RobotState(AXIS_Roll) = base.currentRoll;
-    RobotState(AXIS_Pitch) = base.currentPitch;
-    RobotState(AXIS_Yaw) = base.currentYaw;
-    RobotStatedot(AXIS_X) = base.currentXvel;
-    RobotStatedot(AXIS_Y) = base.currentYvel;
-    RobotStatedot(AXIS_Z) = base.currentZvel;
-    RobotStatedot(AXIS_Roll) = base.currentRollvel;
-    RobotStatedot(AXIS_Pitch) = base.currentPitchvel;
-    RobotStatedot(AXIS_Yaw) = base.currentYawvel;
+    CalcPointJacobian6D(*m_pModel, RobotState, base.ID, Originbase, J_BASE,true);
+    CalcPointJacobian(*m_pModel, RobotState, RL.ID, EP_OFFSET_RL, J_RL, true);
+    CalcPointJacobian(*m_pModel, RobotState, RR.ID, EP_OFFSET_RR, J_RR, true);
+    CalcPointJacobian(*m_pModel, RobotState, FL.ID, EP_OFFSET_FL, J_FL, true);
+    CalcPointJacobian(*m_pModel, RobotState, FR.ID, EP_OFFSET_FR, J_FR, true);
 
-    for (int i = 0; i < nDOF; ++i) {
-        RobotState(6 + i) = actual_joint_pos[i];
-        RobotStatedot(6 + i) = actual_joint_vel[i];
+     //   cout << J_RL << endl;
+    J_A.block(0, 0, 6, 18) = J_BASE;
+    J_A.block(6, 0, 3, 18) = J_RL;
+    J_A.block(9, 0, 3, 18) = J_RR;
+    J_A.block(12, 0, 3, 18) = J_FL;
+    J_A.block(15, 0, 3, 18) = J_FR;
+
+    //cout << J_RL.block(0,6,3,3) << endl;
+    J_RL2 = J_RL.block(0, 6, 3, 3);
+    J_RR2 = J_RR.block(0, 9, 3, 3);
+    J_FL2 = J_FL.block(0, 12, 3, 3);
+    J_FR2 = J_FR.block(0, 15, 3, 3);
+
+    act_RL_q_dot << actual_vel[0], actual_vel[1], actual_vel[2];
+    act_RR_q_dot << actual_vel[3], actual_vel[4], actual_vel[5];
+    act_FL_q_dot << actual_vel[7], actual_vel[8], actual_vel[9];
+    act_FR_q_dot << actual_vel[10], actual_vel[11], actual_vel[12];
+
+    act_RL_foot_vel = J_RL2 * act_RL_q_dot;
+    act_RR_foot_vel = J_RR2 * act_RR_q_dot;
+    act_FL_foot_vel = J_FL2 * act_FL_q_dot;
+    act_FR_foot_vel = J_FR2 * act_FR_q_dot;
+    actual_EP_vel << act_RL_foot_vel, act_RR_foot_vel, act_FL_foot_vel, act_FR_foot_vel;
+
+    // ================= Cal Jacobian END ================= //
+    tar_RL_foot_pos_local = (RL_foot_pos - base_pos) + RL_foot_pos_local_offset;
+    tar_RR_foot_pos_local = (RR_foot_pos - base_pos) + RR_foot_pos_local_offset;
+    tar_FL_foot_pos_local = (FL_foot_pos - base_pos) + FL_foot_pos_local_offset;
+    tar_FR_foot_pos_local = (FR_foot_pos - base_pos) + FR_foot_pos_local_offset;
+
+    base_vel = com_vel;
+
+    tar_RL_foot_vel_local = RL_foot_vel - base_vel;
+    tar_RR_foot_vel_local = RR_foot_vel - base_vel;
+    tar_FL_foot_vel_local = FL_foot_vel - base_vel;
+    tar_FR_foot_vel_local = FR_foot_vel - base_vel;
+
+    target_EP << tar_RL_foot_pos_local, tar_RR_foot_pos_local, tar_FL_foot_pos_local, tar_FR_foot_pos_local;
+    actual_EP << act_RL_foot_pos_local, act_RR_foot_pos_local, act_FL_foot_pos_local, act_FR_foot_pos_local;
+
+    target_EP_vel << tar_RL_foot_vel_local, tar_RR_foot_vel_local, tar_FL_foot_vel_local, tar_FR_foot_vel_local;
+    target_pos = IK1(target_EP);
+
+    tar_RL_q_dot = J_RL2.inverse() * tar_RL_foot_vel_local;
+    tar_RR_q_dot = J_RR2.inverse() * tar_RR_foot_vel_local;
+    tar_FL_q_dot = J_FL2.inverse() * tar_FL_foot_vel_local;
+    tar_FR_q_dot = J_FR2.inverse() * tar_FR_foot_vel_local;
+    target_vel << tar_RL_q_dot, tar_RR_q_dot, 0, tar_FL_q_dot, tar_FR_q_dot;
+
+    for (unsigned int i = 0; i < nDOF; ++i) {
+        //    pd_con_task[i + 7] = Kp_t[i]*(target_EP[i] - actual_EP[i]) + Kd_t[i]*(target_EP_vel[i] - actual_EP_vel[i]); // + target_EP_offset[i];
+        pd_con_task[i + 6] = Kp_t[i] * (target_EP[i] - actual_EP[i]) + Kd_t[i] * (0 - actual_EP_vel[i]);
     }
 
-    Math::Quaternion QQ(0, 0, 0, 1);
-    m_pModel->SetQuaternion(base.ID, QQ, RobotState);
+    for (unsigned int i = 0; i < nDOF; ++i) {
+        pd_con_joint[i + 6] = Kp_q[i] * (target_pos[i] - actual_pos[i]) + Kd_q[i] * (target_vel[i] - actual_vel[i]);
+    }
+
+    CompositeRigidBodyAlgorithm(*m_pModel, RobotState, M_term, true);
+    NonlinearEffects(*m_pModel, RobotState, RobotStatedot, hatNonLinearEffects);
+    NonlinearEffects(*m_pModel, RobotState, VectorNd::Zero(m_pModel->dof_count), G_term);
+    C_term = hatNonLinearEffects - G_term;
+
+    //	Fc << 0,0,0,0,0,0,0, 0,0,110, 0,0,110, 0,0,110, 0,0,110;
+    //    Fc << 0,0,0,0,0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0;
+
+    //    MPC_Fc << 0,0,0,0,0,0,0, 0,tar_Fc_y/4,0, 0,tar_Fc_y/4,0, 0,tar_Fc_y/4,0, 0,tar_Fc_y/4,0;
+    //    cout << "Torque by MPC_FC = " << - J_A.transpose() * (MPC_Fc) << endl;
+
+    //    CTC_Torque = fc_weight * (C_term + G_term - J_A.transpose() * (Fc - pd_con_task + MPC_Fc*10));
+    
+    //CTC_Torque = fc_weight * (C_term + G_term - J_A.transpose() * (Fc - pd_con_task)) + pd_con_joint;
+
+    for (int nJoint = 0; nJoint < nDOF; nJoint++) {
+        joint[nJoint].torque = CTC_Torque(6 + nJoint);
+    }
+}
+
+void CRobot::ComputeTorqueControl_HS(void) {
     CalcPointJacobian6D(*m_pModel, RobotState, base.ID, Originbase, J_BASE, true);
     CalcPointJacobian(*m_pModel, RobotState, RL.ID, EP_OFFSET_RL, J_RL, true);
     CalcPointJacobian(*m_pModel, RobotState, RR.ID, EP_OFFSET_RR, J_RR, true);
     CalcPointJacobian(*m_pModel, RobotState, FL.ID, EP_OFFSET_FL, J_FL, true);
     CalcPointJacobian(*m_pModel, RobotState, FR.ID, EP_OFFSET_FR, J_FR, true);
 
+    J_A.block(0, 0, 6, 18) = J_BASE;
+    J_A.block(6, 0, 3, 18) = J_RL;
+    J_A.block(9, 0, 3, 18) = J_RR;
+    J_A.block(12, 0, 3, 18) = J_FL;
+    J_A.block(15, 0, 3, 18) = J_FR;
+    
     J_RL2 = J_RL.block(0, 6, 3, 3);
     J_RR2 = J_RR.block(0, 9, 3, 3);
     J_FL2 = J_FL.block(0, 12, 3, 3);
     J_FR2 = J_FR.block(0, 15, 3, 3);
-
-    J_A.block(0, 0, 3, 3) = J_RL2;
-    J_A.block(3, 3, 3, 3) = J_RR2;
-    J_A.block(6, 6, 3, 3) = J_FL2;
-    J_A.block(9, 9, 3, 3) = J_FR2;
-
-//    std::cout << "J_A(RBDL)" << endl << J_A << std::endl;
-//    cout<<"---------------------"<<endl;
+   
     CompositeRigidBodyAlgorithm(*m_pModel, RobotState, M_term, true);
     NonlinearEffects(*m_pModel, RobotState, RobotStatedot, hatNonLinearEffects);
     NonlinearEffects(*m_pModel, RobotState, VectorNd::Zero(m_pModel->dof_count), G_term);
@@ -161,181 +355,6 @@ void CRobot::ComputeTorqueControl(void) {
         //joint[i].torque = CTC_Torque(6 + i);
     }
 }
-
-//void CRobot::Init_Pos_Traj_HS(void) {
-//    if (cnt_HS == 0) {
-//        cycle_time_HS = 3.0;
-//        //goal_joint_pos_HS << 0 * D2R, 45 * D2R, -90 * D2R;
-//        goal_EP_pos_HS << 0.0, 0.105, -0.45;
-//
-//        for (int i = 0; i < NUM_OF_ELMO; ++i) {
-//            target_EP_pos_HS[i] = actual_EP_pos_local[i];
-//            target_EP_vel_HS[i] = 0;
-//            init_EP_pos_HS[i] = target_EP_pos_HS[i];
-//        }
-//        cnt_HS++;
-//    } else if (cnt_HS < (unsigned int) (cycle_time_HS / dt)) {
-//        for (int i = 0; i < NUM_OF_ELMO; ++i) {
-//            target_EP_pos_HS[i] = init_EP_pos_HS[i] + (goal_EP_pos_HS[i] - init_EP_pos_HS[i]) / 2.0 * (1 - cos(PI / cycle_time_HS * cnt_HS * dt));
-//            target_EP_vel_HS[i] = (goal_EP_pos_HS[i] - init_EP_pos_HS[i]) / 2.0 * PI / cycle_time_HS * sin(PI / cycle_time_HS * cnt_HS * dt);
-//        }
-//        cnt_HS++;
-//    } else {
-//        for (int i = 0; i < NUM_OF_ELMO; ++i) {
-//            target_EP_pos_HS[i] = goal_EP_pos_HS[i];
-//            target_EP_vel_HS[i] = 0;
-//        }
-//    }
-//    //    target_joint_pos_HS = IK_HS(target_EP_pos_HS);
-//    //    target_joint_vel_HS = J_A.inverse() * target_EP_vel_HS;
-//}
-
-//void CRobot::Home_Pos_Traj_HS(void) {
-//    if (cnt_HS == 0) {
-//        cycle_time_HS = 3.0;
-//        goal_EP_pos_HS << 0.0, 0.105, -0.45;
-//        target_EP_pos_HS = actual_EP_pos_local;
-//        init_EP_pos_HS = target_EP_pos_HS;
-//        target_EP_vel_HS << 0, 0, 0;
-//        cnt_HS++;
-//    } else if (cnt_HS < (unsigned int) (cycle_time_HS / dt)) {
-//        for (int i = 0; i < NUM_OF_ELMO; ++i) {
-//            target_EP_pos_HS[i] = init_EP_pos_HS[i]+(goal_EP_pos_HS[i] - init_EP_pos_HS[i]) / 2.0 * (1 - cos(PI / cycle_time_HS * cnt_HS * dt));
-//            target_EP_vel_HS[i] = (goal_EP_pos_HS[i] - init_EP_pos_HS[i]) / 2.0 * PI / cycle_time_HS * sin(PI / cycle_time_HS * cnt_HS * dt);
-//        }
-//        cnt_HS++;
-//    } else {
-//        target_EP_pos_HS = goal_EP_pos_HS;
-//        target_EP_vel_HS << 0, 0, 0;
-//    }
-//    //    target_joint_pos_HS = IK_HS(target_EP_pos_HS);
-//    //    target_joint_vel_HS = J_A.inverse() * target_EP_vel_HS;
-//}
-
-//void CRobot::Cycle_Test_Pos_Traj_HS(void) {
-//    if (cnt_HS == 0) {
-//        cycle_time_HS = 3.0;
-//        alpha = 10 * D2R;
-//        goal_joint_pos_HS << 0.0, 0.0, target_joint_pos_HS(2) + alpha;
-//
-//        //target_joint_pos_HS = actual_joint_pos_HS;
-//        init_joint_pos_HS = target_joint_pos_HS;
-//        target_joint_vel_HS << 0, 0, 0;
-//        cnt_HS++;
-//    } else if (cnt_HS < (unsigned int) (cycle_time_HS / dt)) {
-//        for (int i = 0; i < NUM_OF_ELMO; ++i) {
-//            target_joint_pos_HS[i] = init_joint_pos_HS[i]+(goal_joint_pos_HS[i] - init_joint_pos_HS[i]) / 2.0 * (1 - cos(2 * PI / cycle_time_HS * cnt_HS * dt));
-//            target_joint_vel_HS[i] = (goal_joint_pos_HS[i] - init_joint_pos_HS[i]) / 2.0 * (2.0 * PI) / cycle_time_HS * sin(2 * PI / cycle_time_HS * cnt_HS * dt);
-//        }
-//        cnt_HS++;
-//    } else {
-//        if (stop_flag == false) {
-//            cnt_HS = 1;
-//        } else {
-//            target_joint_pos_HS = init_joint_pos_HS;
-//            target_joint_vel_HS << 0, 0, 0;
-//        }
-//    }
-//}
-
-//void CRobot::Joystick_Pos_Traj_HS(void) {
-//    double pos_limit_x_u = 0.25;
-//    double pos_limit_x_l = -0.20;
-//
-//    double pos_limit_y_u = 0.11;
-//    double pos_limit_y_l = 0.10;
-//
-//    double pos_limit_z_u = -0.3;
-//    double pos_limit_z_l = -0.45;
-//    double lamda = 0.8;
-//    //double lamda = 0.5;
-//    VectorNd tmp1_target_EP_pos_HS = VectorNd::Zero(3);
-//
-//    if (JoyMode == JOYMODE_HOME) {
-//        if (cnt_HS == 0) {
-//            cycle_time_HS = 3.0;
-//            init_EP_pos_HS = actual_EP_pos_local;
-//            goal_EP_pos_HS << 0.0, 0.105, -0.45;
-//            target_EP_pos_HS = init_EP_pos_HS;
-//            target_EP_vel_HS << 0, 0, 0;
-//            cnt_HS++;
-//
-//        } else if (cnt_HS < (unsigned int) (cycle_time_HS / dt)) {
-//            for (int i = 0; i < NUM_OF_ELMO; ++i) {
-//                target_EP_pos_HS[i] = init_EP_pos_HS[i]+(goal_EP_pos_HS[i] - init_EP_pos_HS[i]) / 2.0 * (1 - cos(PI / cycle_time_HS * cnt_HS * dt));
-//                target_EP_vel_HS[i] = (goal_EP_pos_HS[i] - init_EP_pos_HS[i]) / 2.0 * PI / cycle_time_HS * sin(PI / cycle_time_HS * cnt_HS * dt);
-//            }
-//            cnt_HS++;
-//        } else {
-//            target_EP_pos_HS = goal_EP_pos_HS;
-//            target_EP_vel_HS << 0, 0, 0;
-//        }
-//    } else if (JoyMode == JOYMODE_MOVE || JoyMode == JOYMODE_WALK) {
-//        tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0] + lamda * joy_vel_x*dt;
-//        tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1] + lamda * joy_vel_y*dt;
-//
-//        if ((tmp1_target_EP_pos_HS[0]) > pos_limit_x_u || pos_limit_x_l > (tmp1_target_EP_pos_HS[0])) {
-//            joy_vel_x = 0.0;
-//            tmp1_target_EP_pos_HS[0] = target_EP_pos_HS[0];
-//        } else {
-//            // tmp2_target_EP_pos_HS[0] = tmp1_target_EP_pos_HS[0];
-//        }
-//        if ((tmp1_target_EP_pos_HS[1]) > pos_limit_y_u || pos_limit_y_l > (tmp1_target_EP_pos_HS[1])) {
-//            joy_vel_y = 0.0;
-//            tmp1_target_EP_pos_HS[1] = target_EP_pos_HS[1];
-//        } else {
-//            //tmp2_target_EP_pos_HS[1] = tmp1_target_EP_pos_HS[1];
-//        }
-//        //target_EP_pos_HS[0] = tmp2_target_EP_pos_HS[0];
-//        //target_EP_pos_HS[1] = tmp2_target_EP_pos_HS[1];
-//
-//        ////////////////////////////////////////////////////////////////////////////////////////////////////            
-//        if (JoyMode == JOYMODE_MOVE) {
-//            // tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2] + lamda * joy_vel_z*dt;
-//            //            if ((tmp1_target_EP_pos_HS[2]) > pos_limit_z_u || pos_limit_z_l > (tmp1_target_EP_pos_HS[2])) {
-//            //                joy_vel_z = 0.0;
-//            //                tmp1_target_EP_pos_HS[2] = target_EP_pos_HS[2];
-//            //            } else {
-//            ////                tmp2_target_EP_pos_HS[2] = tmp1_target_EP_pos_HS[2];
-//            //            }
-//            //  target_EP_pos_HS[2] = tmp2_target_EP_pos_HS[2];
-//        }
-//        else if (JoyMode == JOYMODE_WALK) {
-//            walk_time = cnt_HS*dt;
-//
-//            if (cnt_HS == 0) {
-//                init_EP_pos_HS[2] = target_EP_pos_HS[2];
-//                goal_EP_pos_HS[2] = init_EP_pos_HS[2] + foot_height_HS;
-//                target_EP_pos_HS[2] = init_EP_pos_HS[2];
-//                SF_EP_Traj_Gen_HS(step_time_HS, init_EP_pos_HS, goal_EP_pos_HS);
-//
-//                cnt_HS++;
-//            } else if (cnt_HS < tsp_cnt_HS) {
-//                t2 = walk_time;
-//                if (cnt_HS < tsp_cnt_HS / 2) {
-//                    t1 = t2;
-//                    target_EP_pos_HS[2] = z_up[5] * pow(t1, 5) + z_up[4] * pow(t1, 4) + z_up[3] * pow(t1, 3) + z_up[2] * pow(t1, 2) + z_up[1] * pow(t1, 1) + z_up[0];
-//                    target_EP_vel_HS[2] = 5 * z_up[5] * pow(t1, 4) + 4 * z_up[4] * pow(t1, 3) + 3 * z_up[3] * pow(t1, 2) + 2 * z_up[2] * pow(t1, 1) + z_up[1];
-//                } else {
-//                    t1 = t2 - tsp_time_HS / 2.0;
-//                    target_EP_pos_HS[2] = z_down[5] * pow(t1, 5) + z_down[4] * pow(t1, 4) + z_down[3] * pow(t1, 3) + z_down[2] * pow(t1, 2) + z_down[1] * pow(t1, 1) + z_down[0];
-//                    target_EP_vel_HS[2] = 5 * z_down[5] * pow(t1, 4) + 4 * z_down[4] * pow(t1, 3) + 3 * z_down[3] * pow(t1, 2) + 2 * z_down[2] * pow(t1, 1) + z_down[1];
-//                }
-//                cnt_HS++;
-//            } else if (cnt_HS < fsp_cnt_HS + (tsp_cnt_HS + fsp_cnt_HS)*3) {
-//                target_EP_pos_HS[2] = init_EP_pos_HS[2];
-//                target_EP_vel_HS[2] = 0;
-//                cnt_HS++;
-//            } else {
-//                if (walk_stop_flag != true) {
-//                    cnt_HS = 1;
-//                }
-//            }
-//        }
-//    }
-//    //    target_joint_pos_HS = IK_HS(target_EP_pos_HS);
-//    //    target_joint_vel_HS = J_A.inverse() * target_EP_vel_HS;
-//}
 
 VectorNd CRobot::FK(VectorNd q) {
 
@@ -806,124 +825,6 @@ MatrixNd CRobot::Jac(VectorNd q) {
 
 }
 
-
-//void CRobot::Cartesian_Controller(void) {
-//
-//    Cart_Controller_HS[0] = 0;
-//    Cart_Controller_HS[1] = 0;
-//    Cart_Controller_HS[2] = 0;
-//    Cart_Controller_HS[3] = 0;
-//    Cart_Controller_HS[4] = 0;
-//    Cart_Controller_HS[5] = 0;
-//
-//    for (int i = 0; i < NUM_OF_ELMO; ++i) {
-//        Cart_Controller_HS[i + 6] = kp_EP_HS[i] * (actual_EP_pos_local[i] - target_EP_pos_HS[i]) + kd_EP_HS[i] * (actual_EP_vel_local_HS[i] - target_EP_vel_HS[i]);
-//    }
-//}
-
-//void CRobot::Joint_Controller(void) {
-//
-//    Joint_Controller_HS[0] = 0;
-//    Joint_Controller_HS[1] = 0;
-//    Joint_Controller_HS[2] = 0;
-//    Joint_Controller_HS[3] = 0;
-//    Joint_Controller_HS[4] = 0;
-//    Joint_Controller_HS[5] = 0;
-//
-//    for (int i = 0; i < NUM_OF_ELMO; ++i) {
-//        Joint_Controller_HS[i + 6] = kp_joint_HS[i] * (target_joint_pos_HS[i] - actual_joint_pos[i]) + kd_joint_HS[i] * (target_joint_vel_HS[i] - actual_joint_vel[i]);
-//    }
-//}
-
-void CRobot::Mode_Change(void) {
-    if (tmp_Mode_Change_flag == true) {
-        if (cnt_mode_change < 3000) {
-            Mode_Change_flag = false;
-            //cnt_HS = 0; //?
-        } else {
-            Mode_Change_flag = true;
-            tmp_Mode_Change_flag = false;
-            cnt_mode_change = 0;
-            //cnt_HS = 0;
-        }
-        cnt_mode_change++;
-    }
-}
-
-//void CRobot::Controller_Change(void) {
-//    unsigned int target_cnt_change = 3000;
-//
-//    if (Mode_Change_flag == true) {
-//
-//        if (cnt_Control_change == 0) {
-//            target_kp_joint_HS = kp_joint_HS;
-//            target_kd_joint_HS = kd_joint_HS;
-//            target_kp_EP_HS = kp_EP_HS;
-//            target_kd_EP_HS = kd_EP_HS;
-//
-//            init_kp_joint_HS = target_kp_joint_HS;
-//            init_kd_joint_HS = target_kd_joint_HS;
-//            init_kp_EP_HS = target_kp_EP_HS;
-//            init_kd_EP_HS = target_kd_EP_HS;
-//
-//            if (CommandFlag == GOTO_INIT_POS_HS || CommandFlag == GOTO_JOYSTICK_POS_HS) {
-//                Cart_Controller_HS = VectorNd::Zero(9);
-//                goal_kp_joint_HS = abs_kp_joint_HS;
-//                goal_kd_joint_HS = abs_kd_joint_HS;
-//                goal_kp_EP_HS = VectorNd::Zero(3);
-//                goal_kd_EP_HS = VectorNd::Zero(3);
-//            } else if (CommandFlag == GOTO_WALK_READY_POS_HS) {
-//                Joint_Controller_HS = VectorNd::Zero(9);
-//                goal_kp_joint_HS = VectorNd::Zero(3);
-//                goal_kd_joint_HS = VectorNd::Zero(3);
-//                goal_kp_EP_HS = abs_kp_EP_HS;
-//                goal_kd_EP_HS = abs_kd_EP_HS;
-//            }
-//            cnt_Control_change++;
-//        } else if (cnt_Control_change < target_cnt_change) {
-//            target_kp_joint_HS = init_kp_joint_HS + (goal_kp_joint_HS - init_kp_joint_HS) / 2.0 * (1 - cos(PI / target_cnt_change * cnt_Control_change));
-//            target_kd_joint_HS = init_kd_joint_HS + (goal_kd_joint_HS - init_kd_joint_HS) / 2.0 * (1 - cos(PI / target_cnt_change * cnt_Control_change));
-//            target_kp_EP_HS = init_kp_EP_HS + (goal_kp_EP_HS - init_kp_EP_HS) / 2.0 * (1 - cos(PI / target_cnt_change * cnt_Control_change));
-//            target_kd_EP_HS = init_kd_EP_HS + (goal_kd_EP_HS - init_kd_EP_HS) / 2.0 * (1 - cos(PI / target_cnt_change * cnt_Control_change));
-//            cnt_Control_change++;
-//        } else {
-//            target_kp_joint_HS = goal_kp_joint_HS;
-//            target_kd_joint_HS = goal_kd_joint_HS;
-//            target_kp_EP_HS = goal_kp_EP_HS;
-//            target_kd_EP_HS = goal_kd_EP_HS;
-//        }
-//
-//        kp_joint_HS = target_kp_joint_HS;
-//        kd_joint_HS = target_kd_joint_HS;
-//        kp_EP_HS = target_kp_EP_HS;
-//        kd_EP_HS = target_kd_EP_HS;
-//    }
-//
-//}
-
-void CRobot::SF_EP_Traj_Gen_HS(double travel_time, VectorNd init_EP_pos, VectorNd goal_EP_pos) {
-
-    //******* Z trajectory ********///
-    init_x[0] = init_EP_pos(2);
-    init_x[1] = 0;
-    init_x[2] = 0;
-    //    final_x[0] = init_EP_pos(2) + foot_height_HS;
-    final_x[0] = goal_EP_pos(2);
-    final_x[1] = 0;
-    final_x[2] = 0;
-    coefficient_5thPoly(init_x, final_x, travel_time / 2.0, z_up);
-
-    //    init_x[0] = init_EP_pos(2) + foot_height_HS;
-    init_x[0] = goal_EP_pos(2);
-    init_x[1] = 0;
-    init_x[2] = 0;
-    final_x[0] = init_EP_pos(2);
-    final_x[1] = 0;
-    final_x[2] = 0;
-    coefficient_5thPoly(init_x, final_x, travel_time / 2.0, z_down);
-
-}
-
 void CRobot::coefficient_5thPoly(double *init_x, double *final_x, double tf, double *output) {
     double temp_t1 = 0;
     double temp_t2 = tf;
@@ -946,4 +847,934 @@ void CRobot::coefficient_5thPoly(double *init_x, double *final_x, double tf, dou
     output[3] = P(3, 0);
     output[4] = P(4, 0);
     output[5] = P(5, 0);
+}
+
+void CRobot::Torque_off(void) {
+    cout<<"torque off"<<endl;
+    for (int i = 0; i < nDOF; ++i) {
+        joint[i].torque = 0;
+    }
+}
+
+
+void CRobot::WalkReady_Pos_Traj(void) {
+    if (wr_cnt == 0) {
+        moving_done_flag = false;
+        _c << 1, 1, 1, 1;
+        contact_num = 4;
+
+        init_RL_foot_pos = act_RL_foot_pos;
+        init_RR_foot_pos = act_RR_foot_pos;
+        init_FL_foot_pos = act_FL_foot_pos;
+        init_FR_foot_pos = act_FR_foot_pos;
+
+        com_pos = init_com_pos;
+        com_vel = init_com_vel;
+
+        RL_foot_pos = init_RL_foot_pos;
+        RR_foot_pos = init_RR_foot_pos;
+        FL_foot_pos = init_FL_foot_pos;
+        FR_foot_pos = init_FR_foot_pos;
+
+        RL_foot_vel = tar_init_RL_foot_vel;
+        RR_foot_vel = tar_init_RR_foot_vel;
+        FL_foot_vel = tar_init_FL_foot_vel;
+        FR_foot_vel = tar_init_FR_foot_vel;
+
+        base_ori << 0, 0, 0;
+        base_ori_dot << 0, 0, 0;
+        tmp_com_pos << 0, 0, 0;
+
+        lpf_tar_pitch_ang = 0;
+
+        fc_weight = 0;
+
+        // for actual pos & vel
+        pos_alpha = 1;
+        vel_alpha = 1;
+
+        wr_cnt++;
+    } else if (wr_cnt <= walk_ready_cnt) {
+        com_pos = init_com_pos;
+        com_vel = init_com_vel;
+
+        RL_foot_pos = init_RL_foot_pos + (tar_init_RL_foot_pos - init_RL_foot_pos) / 2.0 * (1 - cos(PI2 / (walk_ready_time * 2)* (double) (wr_cnt) * dt));
+        RR_foot_pos = init_RR_foot_pos + (tar_init_RR_foot_pos - init_RR_foot_pos) / 2.0 * (1 - cos(PI2 / (walk_ready_time * 2)* (double) (wr_cnt) * dt));
+        FL_foot_pos = init_FL_foot_pos + (tar_init_FL_foot_pos - init_FL_foot_pos) / 2.0 * (1 - cos(PI2 / (walk_ready_time * 2)* (double) (wr_cnt) * dt));
+        FR_foot_pos = init_FR_foot_pos + (tar_init_FR_foot_pos - init_FR_foot_pos) / 2.0 * (1 - cos(PI2 / (walk_ready_time * 2)* (double) (wr_cnt) * dt));
+
+        RL_foot_vel = (tar_init_RL_foot_pos - init_RL_foot_pos)* (PI2 / (walk_ready_time * 2)) / 2.0 * (sin(PI2 / (walk_ready_time * 2) * (double) (wr_cnt) * dt));
+        RR_foot_vel = (tar_init_RR_foot_pos - init_RR_foot_pos)* (PI2 / (walk_ready_time * 2)) / 2.0 * (sin(PI2 / (walk_ready_time * 2) * (double) (wr_cnt) * dt));
+        FL_foot_vel = (tar_init_FL_foot_pos - init_FL_foot_pos)* (PI2 / (walk_ready_time * 2)) / 2.0 * (sin(PI2 / (walk_ready_time * 2) * (double) (wr_cnt) * dt));
+        FR_foot_vel = (tar_init_FR_foot_pos - init_FR_foot_pos)* (PI2 / (walk_ready_time * 2)) / 2.0 * (sin(PI2 / (walk_ready_time * 2) * (double) (wr_cnt) * dt));
+
+        fc_weight = 1 / 2.0 * (1 - cos(PI2 / (walk_ready_time * 2)* (double) (wr_cnt) * dt));
+
+        if (wr_cnt == 1) {
+            pos_alpha = 0.02;
+            vel_alpha = 0.02;
+        }
+        wr_cnt++;
+    } else if (wr_cnt <= walk_ready_cnt * 2) {
+        com_pos =init_com_pos+ (tar_init_com_pos - init_com_pos) / 2.0* (1- cos(PI2 / (walk_ready_time * 2)* (double) (wr_cnt- walk_ready_cnt)* dt));
+        com_vel = (tar_init_com_pos - init_com_pos)* (PI2 / (walk_ready_time * 2)) / 2.0 * (sin(PI2 / (walk_ready_time * 2)* (double) (wr_cnt - walk_ready_cnt) * dt));
+
+        RL_foot_pos = tar_init_RL_foot_pos;
+        RR_foot_pos = tar_init_RR_foot_pos;
+        FL_foot_pos = tar_init_FL_foot_pos;
+        FR_foot_pos = tar_init_FR_foot_pos;
+
+        RL_foot_vel = tar_init_RL_foot_vel;
+        RR_foot_vel = tar_init_RR_foot_vel;
+        FL_foot_vel = tar_init_FL_foot_vel;
+        FR_foot_vel = tar_init_FR_foot_vel;
+
+        fc_weight = 1;
+
+        wr_cnt++;
+
+        if (wr_cnt == walk_ready_cnt * 2) {
+            walk_ready_moving_done_flag = true;
+            cout << "!! Walk Ready Done !!" << endl;
+
+            moving_done_flag = true;
+        }
+    } else {
+        com_pos = tar_init_com_pos;
+        com_vel = tar_init_com_vel;
+
+        RL_foot_pos = tar_init_RL_foot_pos;
+        RR_foot_pos = tar_init_RR_foot_pos;
+        FL_foot_pos = tar_init_FL_foot_pos;
+        FR_foot_pos = tar_init_FR_foot_pos;
+
+        RL_foot_vel = tar_init_RL_foot_vel;
+        RR_foot_vel = tar_init_RR_foot_vel;
+        FL_foot_vel = tar_init_FL_foot_vel;
+        FR_foot_vel = tar_init_FR_foot_vel;
+    }
+    base_pos = com_pos + base_offset;
+}
+
+void CRobot::FK2(void) {
+    act_RL_foot_pos = CalcBodyToBaseCoordinates(*m_pModel, RobotState, RL.ID, EP_OFFSET_RL, true);
+    act_RR_foot_pos = CalcBodyToBaseCoordinates(*m_pModel, RobotState, RR.ID, EP_OFFSET_RR, true);
+    act_FL_foot_pos = CalcBodyToBaseCoordinates(*m_pModel, RobotState, FL.ID, EP_OFFSET_FL, true);
+    act_FR_foot_pos = CalcBodyToBaseCoordinates(*m_pModel, RobotState, FR.ID, EP_OFFSET_FR, true);
+
+    act_RL_foot_pos_local = act_RL_foot_pos - CalcBodyToBaseCoordinates(*m_pModel, RobotState, base.ID, Originbase, true);
+    act_RR_foot_pos_local = act_RR_foot_pos - CalcBodyToBaseCoordinates(*m_pModel, RobotState, base.ID, Originbase, true);
+    act_FL_foot_pos_local = act_FL_foot_pos - CalcBodyToBaseCoordinates(*m_pModel, RobotState, base.ID, Originbase, true);
+    act_FR_foot_pos_local = act_FR_foot_pos - CalcBodyToBaseCoordinates(*m_pModel, RobotState, base.ID, Originbase, true);
+    
+//    printf("--> RL= ( %3f / %3f/ %3f ) \n", act_RL_foot_pos(0), act_RL_foot_pos(1), act_RL_foot_pos(2));
+//    printf("--> RR= ( %3f / %3f/ %3f ) \n", act_RR_foot_pos(0), act_RR_foot_pos(1), act_RR_foot_pos(2));
+//    printf("--> FL= ( %3f / %3f/ %3f ) \n", act_FL_foot_pos(0), act_FL_foot_pos(1), act_FL_foot_pos(2));
+//    printf("--> FR= ( %3f / %3f/ %3f ) \n", act_FR_foot_pos(0), act_FR_foot_pos(1), act_FR_foot_pos(2));
+    
+//    printf("--> RL(L)= ( %3f / %3f/ %3f ) \n", act_RL_foot_pos_local(0), act_RL_foot_pos_local(1), act_RL_foot_pos_local(2));
+//    printf("--> RR(L)= ( %3f / %3f/ %3f ) \n", act_RR_foot_pos_local(0), act_RR_foot_pos_local(1), act_RR_foot_pos_local(2));
+//    printf("--> FL(L)= ( %3f / %3f/ %3f ) \n", act_FL_foot_pos_local(0), act_FL_foot_pos_local(1), act_FL_foot_pos_local(2));
+//    printf("--> FR(L)= ( %3f / %3f/ %3f ) \n", act_FR_foot_pos_local(0), act_FR_foot_pos_local(1), act_FR_foot_pos_local(2));
+    //cout << "=========================" << endl;
+}
+
+void CRobot::Get_act_com(void) {
+    // ============== Get COM Position & Orientation ============ //
+    if (contact_num != 0) {
+        tmp_act_base_pos(0) = (_c(0) * (RL_foot_pos[0] - act_RL_foot_pos_local[0]) + _c(1) * (RR_foot_pos[0] - act_RR_foot_pos_local[0]) + _c(2) * (FL_foot_pos[0] - act_FL_foot_pos_local[0]) + _c(3) * (FR_foot_pos[0] - act_FR_foot_pos_local[0])) / contact_num;
+        tmp_act_base_pos(1) = (_c(0) * (RL_foot_pos[1] - act_RL_foot_pos_local[1]) + _c(1) * (RR_foot_pos[1] - act_RR_foot_pos_local[1]) + _c(2) * (FL_foot_pos[1] - act_FL_foot_pos_local[1]) + _c(3) * (FR_foot_pos[1] - act_FR_foot_pos_local[1])) / contact_num;
+        tmp_act_base_pos(2) = (_c(0) * (RL_foot_pos[2] - act_RL_foot_pos_local[2]) + _c(1) * (RR_foot_pos[2] - act_RR_foot_pos_local[2]) + _c(2) * (FL_foot_pos[2] - act_FL_foot_pos_local[2]) + _c(3) * (FR_foot_pos[2] - act_FR_foot_pos_local[2])) / contact_num;
+
+        tmp_act_base_vel(0) = -(_c(0) * actual_EP_vel[0] + _c(1) * actual_EP_vel[3] + _c(2) * actual_EP_vel[6] + _c(3) * actual_EP_vel[9]) / contact_num;
+        tmp_act_base_vel(1) = -(_c(0) * actual_EP_vel[1] + _c(1) * actual_EP_vel[4] + _c(2) * actual_EP_vel[7] + _c(3) * actual_EP_vel[10]) / contact_num;
+        tmp_act_base_vel(2) = -(_c(0) * actual_EP_vel[2] + _c(1) * actual_EP_vel[5] + _c(2) * actual_EP_vel[8] + _c(3) * actual_EP_vel[11]) / contact_num;
+
+    } else {
+        tmp_act_base_pos(0) = ((RL_foot_pos[0] - act_RL_foot_pos_local[0])+ (RR_foot_pos[0] - act_RR_foot_pos_local[0])+ (FL_foot_pos[0] - act_FL_foot_pos_local[0])+ (FR_foot_pos[0] - act_FR_foot_pos_local[0])) / 4;
+        tmp_act_base_pos(1) = ((RL_foot_pos[1] - act_RL_foot_pos_local[1])+ (RR_foot_pos[1] - act_RR_foot_pos_local[1])+ (FL_foot_pos[1] - act_FL_foot_pos_local[1])+ (FR_foot_pos[1] - act_FR_foot_pos_local[1])) / 4;
+        tmp_act_base_pos(2) = ((RL_foot_pos[2] - act_RL_foot_pos_local[2])+ (RR_foot_pos[2] - act_RR_foot_pos_local[2])+ (FL_foot_pos[2] - act_FL_foot_pos_local[2])+ (FR_foot_pos[2] - act_FR_foot_pos_local[2])) / 4;
+
+        tmp_act_base_vel(0) = -(actual_EP_vel[0] + actual_EP_vel[3] + actual_EP_vel[6] + actual_EP_vel[9]) / 4;
+        tmp_act_base_vel(1) = -(actual_EP_vel[1] + actual_EP_vel[4] + actual_EP_vel[7] + actual_EP_vel[10]) / 4;
+        tmp_act_base_vel(2) = -(actual_EP_vel[2] + actual_EP_vel[5] + actual_EP_vel[8] + actual_EP_vel[11]) / 4;
+    }
+
+    if (move_cnt == 0 && CommandFlag != GOTO_WALK_READY_POS) {
+        act_base_pos = tmp_act_base_pos;
+        act_base_vel = tmp_act_base_vel;
+        pre_act_com_vel = act_base_vel;
+    }
+
+    act_base_pos = (1 - pos_alpha) * act_base_pos + pos_alpha * tmp_act_base_pos;
+    act_base_vel = (1 - vel_alpha) * act_base_vel + vel_alpha * tmp_act_base_vel;
+    
+    act_com_pos = act_base_pos - tmp_com_pos - base_offset;
+    act_com_vel = act_base_vel; //(0.90*lpf_base_alpha)*pre_act_com_vel + ((1 - 0.90)*lpf_base_alpha)*act_base_vel;
+
+    tmp_act_com_acc = (act_com_vel - pre_act_com_vel) / dt;
+    pre_act_com_vel = act_com_vel;
+
+    act_com_acc = (1 - 0.02) * act_com_acc + 0.02 * tmp_act_com_acc;
+
+    tmp_act_base_ori << IMURoll, IMUPitch, IMUYaw - init_IMUYaw;
+    tmp_act_base_ori_dot << IMURoll_dot, IMUPitch_dot, IMUYaw_dot;
+
+    // low pass filter
+    const double tmp_base_alpha = 1;
+    act_base_ori = (1 - tmp_base_alpha) * act_base_ori + tmp_base_alpha * tmp_act_base_ori;
+    act_base_ori_dot = (1 - tmp_base_alpha) * act_base_ori_dot + tmp_base_alpha * tmp_act_base_ori_dot;
+
+    if (act_base_ori(0) > 40 * D2R) {
+        act_base_ori(0) = 40 * D2R;
+    } else if (act_base_ori(0) < -40 * D2R) {
+        act_base_ori(0) = -40 * D2R;
+    }
+
+    if (act_base_ori(1) > 40 * D2R) {
+        act_base_ori(1) = 40 * D2R;
+    } else if (act_base_ori(1) < -40 * D2R) {
+        act_base_ori(1) = -40 * D2R;
+    }
+}
+
+VectorNd CRobot::IK1(VectorNd EP) {
+    const double L1 = 0.105;
+    const double L2 = 0.305;
+    const double L3 = 0.309; //0.305;
+
+    static double x = 0;
+    static double y = 0;
+    static double z = 0;
+
+    ROT_Y << cos(base_ori(1) * 1), 0, sin(base_ori(1) * 1)\
+            , 0, 1, 0\
+            , -sin(base_ori(1) * 1), 0, cos(base_ori(1) * 1);
+
+    //    ROT_Y << 1, 0, 0,
+    //    		 0, 1, 0,
+    //    		 0, 0, 1;
+
+    tmp_foot_pos << -(EP[0] - RL_base2hip_pos(0)), EP[1] - RL_base2hip_pos(1), EP[2] - RL_base2hip_pos(2);
+    tmp_foot_pos2 = ROT_Y * tmp_foot_pos;
+
+    //    x = tmp_foot_pos(0); // + 0.4*tan(base_ori(1));//tmp_foot_pos2(0);
+    //    y = tmp_foot_pos(1);
+    //    z = tmp_foot_pos(2); ///cos(base_ori(1));
+
+    x = tmp_foot_pos2(0);
+    y = tmp_foot_pos2(1);
+    z = tmp_foot_pos2(2);
+
+    //    cout << "tmp_foot_pos = " << tmp_foot_pos.transpose() << endl;
+    //    cout << "tmp_foot_pos2 = " << tmp_foot_pos2.transpose() << endl;
+    //    x = -(EP[0] - RL_base2hip_pos(0));
+    //    y = EP[1] - RL_base2hip_pos(1);
+    //    z = EP[2] - RL_base2hip_pos(2);
+
+    if (z < (-0.6))
+        z = -0.6;
+
+    //    cout << "[RL1] x = " << x << ", y = " << y << ", z = " << z << endl;
+    //    cout << "[RL2] x = " << x << ", y = " << y << ", z = " << z << endl;
+
+    target_pos[0] = atan(y / abs(z)) - PI / 2 + acos(L1 / (sqrt(pow(y, 2) + pow(z, 2))));
+    target_pos[1] = -(-atan(x / sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
+    target_pos[2] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
+
+    //	cout << "[RL] q[0] = " << target_pos[0]*R2D << ", q[1] = " << target_pos[1]*R2D << ", q[2] = " << target_pos[2]*R2D << endl;
+
+    tmp_foot_pos << -(EP[3] - RR_base2hip_pos(0)), EP[4] - RR_base2hip_pos(1), EP[5]- RR_base2hip_pos(2);
+    tmp_foot_pos2 = ROT_Y * tmp_foot_pos;
+
+    x = tmp_foot_pos2(0); // + 0.4*tan(base_ori(1));//tmp_foot_pos2(0);
+    y = tmp_foot_pos2(1);
+    z = tmp_foot_pos2(2); ///cos(base_ori(1));
+
+    //    x = tmp_foot_pos2(0);
+    //    y = tmp_foot_pos2(1);
+    //    z = tmp_foot_pos2(2);
+
+    //    x = -(EP[3] - RR_base2hip_pos(0));
+    //    y = EP[4] - RR_base2hip_pos(1);
+    //    z = EP[5] - RR_base2hip_pos(2);
+
+    if (z < (-0.6))
+        z = -0.6;
+
+    target_pos[3] = PI / 2 + atan(y / abs(z)) - acos(L1 / sqrt(pow(y, 2) + pow(z, 2))); //PI/2 - acos(L1/sqrt(pow(y,2) + pow(z,2))) - atan(abs(y)/abs(z)); //-((atan(y/abs(z)) - PI/2 + acos(L1/(sqrt(pow(y,2) + pow(z,2))))));
+    target_pos[4] = -(-atan(x / sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
+    target_pos[5] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
+
+    tmp_foot_pos << -(EP[6] - FL_base2hip_pos(0)), EP[7] - FL_base2hip_pos(1), EP[8]- FL_base2hip_pos(2);
+    tmp_foot_pos2 = ROT_Y * tmp_foot_pos;
+
+    x = tmp_foot_pos2(0); // + 0.4*tan(base_ori(1));//tmp_foot_pos2(0);
+    y = tmp_foot_pos2(1);
+    z = tmp_foot_pos2(2); ///cos(base_ori(1));
+    //    x = tmp_foot_pos2(0);
+    //    y = tmp_foot_pos2(1);
+    //    z = tmp_foot_pos2(2);
+
+    //    x = -(EP[6] - FL_base2hip_pos(0));
+    //    y = EP[7] - FL_base2hip_pos(1);
+    //    z = EP[8] - FL_base2hip_pos(2);
+
+    if (z < (-0.6))
+        z = -0.6;
+
+    target_pos[7] = atan(y / abs(z)) - PI / 2 + acos(L1 / (sqrt(pow(y, 2) + pow(z, 2))));
+    target_pos[8] = -(-atan(x / sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
+    target_pos[9] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
+
+    tmp_foot_pos << -(EP[9] - FR_base2hip_pos(0)), EP[10] - FR_base2hip_pos(1), EP[11] - FR_base2hip_pos(2);
+    tmp_foot_pos2 = ROT_Y * tmp_foot_pos;
+
+    x = tmp_foot_pos2(0); // + 0.4*tan(base_ori(1));//tmp_foot_pos2(0);
+    y = tmp_foot_pos2(1);
+    z = tmp_foot_pos2(2); ///cos(base_ori(1));
+    //    x = tmp_foot_pos2(0);
+    //    y = tmp_foot_pos2(1);
+    //    z = tmp_foot_pos2(2);
+
+    if (z < (-0.6))
+        z = -0.6;
+
+    target_pos[10] = PI / 2 + atan(y / abs(z)) - acos(L1 / sqrt(pow(y, 2) + pow(z, 2))); //PI/2 - acos(L1/sqrt(pow(y,2) + pow(z,2))) - atan(abs(y)/abs(z)); //-((atan(y/abs(z)) - PI/2 + acos(L1/(sqrt(pow(y,2) + pow(z,2))))));
+    target_pos[11] = -(-atan(x / sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
+    target_pos[12] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
+
+    //    target_pos[6] = 0;
+    //    cout << "tar_pos = " << target_pos.transpose()*R2D << endl;
+
+    return target_pos;
+}
+
+VectorNd CRobot::Get_COM(VectorNd base, VectorNd q) {
+    const double m_body = 24.333;
+    const double m_hp = 1.4;
+    const double m_thigh = 3.209;
+    const double m_calf = 0.634;
+    const double m_leg = m_hp + m_thigh + m_calf;
+    const double m_robot = m_leg * 4 + m_body;
+
+    // Transformation & Rotation matrix (Base)
+    R_w2base_R << 1, 0, 0, 0\
+            , 0, cos(base(3)), -sin(base(3)), 0\
+            , 0, sin(base(3)), cos(base(3)), 0\
+            , 0, 0, 0, 1;
+    R_w2base_P << cos(base(4)), 0, sin(base(4)), 0\
+            , 0, 1, 0, 0\
+            , -sin(base(4)), 0, cos(base(4)), 0\
+            , 0, 0, 0, 1;
+    R_w2base_Y << cos(base(5)), -sin(base(5)), 0, 0\
+            , sin(base(5)), cos(base(5)), 0, 0\
+            , 0, 0, 1, 0\
+            , 0, 0, 0, 1;
+
+    R_w2base = R_w2base_Y * R_w2base_P * R_w2base_R;
+    T_w2base << 1, 0, 0, base(0)\
+            , 0, 1, 0, base(1)\
+            , 0, 0, 1, base(2)\
+            , 0, 0, 0, 1;
+
+    // Transformation & Rotation matrix (Leg)
+    // RL
+    TR_RL_base2hp << 1, 0, 0, -0.35\
+            , 0, cos(q(0)), -sin(q(0)), 0.115\
+            , 0, sin(q(0)), cos(q(0)), -0.053\
+            , 0, 0, 0, 1;
+
+    TR_RL_hp2thigh << cos(q(1)), 0, sin(q(1)), 0.0\
+            , 0, 1, 0, 0.105\
+            , -sin(q(1)), 0, cos(q(1)), 0.0\
+            , 0, 0, 0, 1;
+
+    TR_RL_thigh2calf << cos(q(2)), 0, sin(q(2)), 0.0\
+            , 0, 1, 0, 0.0\
+            , -sin(q(2)), 0, cos(q(2)), -0.305\
+            , 0, 0, 0, 1;
+
+    p_RL_base2hp_com = TR_RL_base2hp * p_RL_hp_com;
+    p_RL_base2thigh_com = TR_RL_base2hp * TR_RL_hp2thigh * p_RL_thigh_com;
+    p_RL_base2calf_com = TR_RL_base2hp * TR_RL_hp2thigh * TR_RL_thigh2calf * p_RL_calf_com;
+
+    p_RL_com = (m_hp * p_RL_base2hp_com + m_thigh * p_RL_base2thigh_com + m_calf * p_RL_base2calf_com) / (m_leg);
+
+    //    cout << "p_RL_com = " << p_RL_com << endl;
+
+    // RR
+    TR_RR_base2hp << 1, 0, 0, -0.35\
+             , 0, cos(q(3)), -sin(q(3)), -0.115\
+            , 0, sin(q(3)), cos(q(3)), -0.053\
+            , 0, 0, 0, 1;
+
+    TR_RR_hp2thigh << cos(q(4)), 0, sin(q(4)), 0.0\
+            , 0, 1, 0, -0.105\
+            , -sin(q(4)), 0, cos(q(4)), 0.0\
+            , 0, 0, 0, 1;
+
+    TR_RR_thigh2calf << cos(q(5)), 0, sin(q(5)), 0.0\
+            , 0, 1, 0, 0.0\
+            , -sin(q(5)), 0, cos(q(5)), -0.305\
+            , 0, 0, 0, 1;
+
+    p_RR_base2hp_com = TR_RR_base2hp * p_RR_hp_com;
+    p_RR_base2thigh_com = TR_RR_base2hp * TR_RR_hp2thigh * p_RR_thigh_com;
+    p_RR_base2calf_com = TR_RR_base2hp * TR_RR_hp2thigh * TR_RR_thigh2calf * p_RR_calf_com;
+
+    p_RR_com = (m_hp * p_RR_base2hp_com + m_thigh * p_RR_base2thigh_com + m_calf * p_RR_base2calf_com) / (m_leg);
+
+    //    cout << "p_RR_com = " << p_RR_com << endl;
+
+    // FL
+    TR_FL_base2hp << 1, 0, 0, 0.35\
+            , 0, cos(q(0)), -sin(q(0)), 0.115\
+            , 0, sin(q(0)), cos(q(0)), -0.053\
+            , 0, 0, 0, 1;
+
+    TR_FL_hp2thigh << cos(q(1)), 0, sin(q(1)), 0.0\
+            , 0, 1, 0, 0.105\
+            , -sin(q(1)), 0, cos(q(1)), 0.0\
+            , 0, 0, 0, 1;
+
+    TR_FL_thigh2calf << cos(q(2)), 0, sin(q(2)), 0.0\
+            , 0, 1, 0, 0.0\
+            , -sin(q(2)), 0, cos(q(2)), -0.305\
+            , 0, 0, 0, 1;
+
+    p_FL_base2hp_com = TR_FL_base2hp * p_FL_hp_com;
+    p_FL_base2thigh_com = TR_FL_base2hp * TR_FL_hp2thigh * p_FL_thigh_com;
+    p_FL_base2calf_com = TR_FL_base2hp * TR_FL_hp2thigh * TR_FL_thigh2calf * p_FL_calf_com;
+
+    p_FL_com = (m_hp * p_FL_base2hp_com + m_thigh * p_FL_base2thigh_com + m_calf * p_FL_base2calf_com) / (m_leg);
+
+    //    cout << "p_FL_com = " << p_FL_com << endl;
+
+    // FR
+    TR_FR_base2hp << 1, 0, 0, 0.35\
+            , 0, cos(q(3)), -sin(q(3)), -0.115\
+            , 0, sin(q(3)), cos(q(3)), -0.053\
+            , 0, 0, 0, 1;
+
+    TR_FR_hp2thigh << cos(q(4)), 0, sin(q(4)), 0.0\
+            , 0, 1, 0, -0.105\
+            , -sin(q(4)), 0, cos(q(4)), 0.0\
+            , 0, 0, 0, 1;
+
+    TR_FR_thigh2calf << cos(q(5)), 0, sin(q(5)), 0.0\
+            , 0, 1, 0, 0.0\
+            , -sin(q(5)), 0, cos(q(5)), -0.305\
+            , 0, 0, 0, 1;
+
+    p_FR_base2hp_com = TR_FR_base2hp * p_FR_hp_com;
+    p_FR_base2thigh_com = TR_FR_base2hp * TR_FR_hp2thigh * p_FR_thigh_com;
+    p_FR_base2calf_com = TR_FR_base2hp * TR_FR_hp2thigh * TR_FR_thigh2calf * p_FR_calf_com;
+
+    p_FR_com = (m_hp * p_FR_base2hp_com + m_thigh * p_FR_base2thigh_com + m_calf * p_FR_base2calf_com) / (m_leg);
+
+    //    cout << "p_FR_com = " << p_FR_com << endl;
+
+    // COM from base
+    p_robot_com_from_base = (m_body * p_base2body_com + m_leg * (p_RL_com + p_RR_com + p_FL_com + p_FR_com)) / (m_robot);
+    p_robot_com_from_w = T_w2base * R_w2base * p_robot_com_from_base;
+    p_robot_com = p_robot_com_from_w.block<3, 1>(0, 0);
+
+    printf("--> p_robot_com= ( %3f / %3f/ %3f ) \n", p_robot_com(0), p_robot_com(1), p_robot_com(2));
+    return p_robot_com;
+}
+
+void CRobot::set_simul_para(void) {
+    if (CommandFlag == NO_ACT || CommandFlag == GOTO_WALK_READY_POS || CommandFlag == NOMAL_TROT_WALKING || CommandFlag == TEST_FLAG) {
+        foot_height = 0.10;
+        _alpha = 0.001;
+        dsp_time = 0.20;
+        fsp_time = 0.10; //0.07
+        step_time = dsp_time + fsp_time;
+        dsp_cnt = 200;
+        fsp_cnt = 100; //70;
+        step_cnt = dsp_cnt + fsp_cnt;
+
+        tar_Kp_q << 400, 100, 100, 400, 100, 100, 400, 100, 100, 400, 100, 100;
+        tar_Kd_q << 15, 5, 5, 15, 5, 5, 15, 5, 5, 15, 5, 5;
+
+        tar_Kp_t << 2000, 0, 500, 2000, 0, 500, 2000, 0, 500, 2000, 0, 500;
+        tar_Kd_t << 10, 0, 5, 10, 0, 5, 10, 0, 5, 10, 0, 5;
+
+        // for gain scheduling
+        tar_Kp_q_low << 400, 50, 50, 400, 50, 50, 400, 50, 50, 400, 50, 50;
+        tar_Kd_q_low << 15, 4, 4, 15, 4, 4, 15, 4, 4, 15, 4, 4;
+
+        tar_Kp_t_low << 2000, 0, 0, 2000, 0, 0, 2000, 0, 0, 2000, 0, 0;
+        tar_Kd_t_low << 10, 0, 0, 10, 0, 0, 10, 0, 0, 10, 0, 0;
+
+        tar_Kp_x << 1, 0, 0\
+                   , 0, 50, 0\
+                    , 0, 0, 1;
+        tar_Kd_x << 0.01, 0, 0\
+                   , 0, 5, 0\
+                   , 0, 0, 0.1;
+        
+        tar_Kp_w << 1000, 0, 0\
+                , 0, 1000, 0\
+                , 0, 0, 0;
+        tar_Kd_w << 10, 0, 0\
+                , 0, 10, 0\
+                , 0, 0, 0;
+        
+    } else if (CommandFlag == STAIR_WALKING) {
+        foot_height = 0.10;
+        _alpha = 0.001;
+        dsp_time = 0.20;
+        fsp_time = 0.50; //0.07
+        step_time = dsp_time + fsp_time;
+        dsp_cnt = 200;
+        fsp_cnt = 500; //70;
+        step_cnt = dsp_cnt + fsp_cnt;
+
+        tar_Kp_q << 400, 20, 20, 400, 20, 20, 400, 20, 20, 400, 20, 20;
+        tar_Kd_q << 15, 2, 2, 15, 2, 2, 15, 2, 2, 15, 2, 2;
+
+        tar_Kp_t << 1000, 0, 100, 1000, 0, 100, 1000, 0, 100, 1000, 0, 100;
+        tar_Kd_t << 10, 0, 1, 10, 0, 1, 10, 0, 1, 10, 0, 1;
+
+        // for gain scheduling
+        tar_Kp_q_low << 400, 10, 10, 400, 10, 10, 400, 10, 10, 400, 10, 10;
+        tar_Kd_q_low << 15, 1, 1, 15, 1, 1, 15, 1, 1, 15, 1, 1;
+
+        tar_Kp_t_low << 1000, 0, 0, 1000, 0, 0, 1000, 0, 0, 1000, 0, 0;
+        tar_Kd_t_low << 10, 0, 0, 10, 0, 0, 10, 0, 0, 10, 0, 0;
+
+        tar_Kp_x << 1, 0, 0, 0, 50, 0, 0, 0, 30;
+        tar_Kd_x << 0.01, 0, 0, 0, 5, 0, 0, 0, 3;
+        
+        tar_Kp_w << 1000, 0, 0\
+                , 0, 1000, 0\
+                , 0, 0, 0;
+        tar_Kd_w << 10, 0, 0\
+                , 0, 10, 0\
+                , 0, 0, 0;
+        
+    } else if (CommandFlag == FLYING_TROT_RUNNING || CommandFlag == PRONK_JUMP) {
+        swing_foot_height = 0.06; // flying trot
+        _alpha = 0.0001;
+        
+        // =============== Flying trot parameters initialize =============== //
+        ts = 0.20; //0.22; //0.25;
+        tf = 0.05; //0.07;
+        ft_step_time = ts + tf;
+
+        ts_cnt = 200; //220;
+        tf_cnt = 50;
+        ft_step_cnt = ts_cnt + tf_cnt;
+
+        h_0 = tar_init_com_pos(2);
+        v_0 = 0;
+        a_0 = 0;
+
+        v_1 = 0.2; //0.10; //0.10; //0.15;
+        a_1 = -GRAVITY;
+
+        h_2 = tar_init_com_pos(2);
+        v_2 = -0.0; //-0.05; // -0.3
+        a_2 = -GRAVITY;
+
+        h_3 = tar_init_com_pos(2);
+        v_3 = 0;
+        a_3 = 0;
+
+        h_1 = 0.5 * GRAVITY * tf * tf - v_1 * tf + h_2;
+
+        // =============== Flying trot parameters initialize END =============== //
+        // for gain scheduling
+        tar_Kp_q_low << 300, 100, 100, 300, 100, 100, 300, 100, 100, 300, 100, 100;
+        tar_Kd_q_low << 10, 5, 5, 10, 5, 5, 10, 5, 5, 10, 5, 5;
+
+        tar_Kp_t_low << 2000, 3000, 1000, 2000, 3000, 1000, 2000, 3000, 1000, 2000, 3000, 1000;
+        tar_Kd_t_low << 15, 20, 10, 15, 20, 10, 15, 20, 10, 15, 20, 10;
+
+        tar_Kp_x << 5, 0, 0\
+                , 0, 50, 0\
+                , 0, 0, 5;
+        tar_Kd_x << 0.5, 0, 0\
+                , 0, 5, 0\
+                , 0, 0, 0.1;
+        tar_Kp_w << 1000, 0, 0\
+                , 0, 1000, 0\
+                , 0, 0, 0;
+        tar_Kd_w << 10, 0, 0\
+                , 0, 10, 0\
+                , 0, 0, 0;
+    }
+}
+
+void CRobot::set_act_robot_para(void) {
+    if (CommandFlag == NO_ACT || CommandFlag == GOTO_WALK_READY_POS || CommandFlag == NOMAL_TROT_WALKING || CommandFlag == TEST_FLAG) {
+        foot_height = 0.06; //0.10;
+        _alpha = 0.001; //0.01; // 0.001
+        dsp_time = 0.20;
+        fsp_time = 0.10; //0.07
+        step_time = dsp_time + fsp_time;
+        dsp_cnt = 200;
+        fsp_cnt = 100; //70;
+        step_cnt = dsp_cnt + fsp_cnt;
+
+        tar_Kp_q << 500, 150, 100, 500, 150, 100, 500, 150, 100, 500, 150, 100;
+        tar_Kd_q << 10, 6, 5, 10, 6, 5, 10, 6, 5, 10, 6, 5;
+
+        tar_Kp_t << 1000, 0, 100, 1000, 0, 100, 1000, 0, 100, 1000, 0, 100;
+        tar_Kd_t << 10, 0, 1, 10, 0, 1, 10, 0, 1, 10, 0, 1;
+
+        // for gain scheduling
+        tar_Kp_q_low << 500, 80, 50, 500, 80, 50, 500, 80, 50, 500, 80, 50;
+        tar_Kd_q_low << 10, 4, 2, 10, 4, 2, 10, 4, 2, 10, 4, 2;
+
+        tar_Kp_t_low << 1000, 0, 0, 1000, 0, 0, 1000, 0, 0, 1000, 0, 0;
+        tar_Kd_t_low << 10, 0, 0, 10, 0, 0, 10, 0, 0, 10, 0, 0;
+
+        // ========= QP Gain ========= //
+        tar_Kp_x << 1, 0, 0\
+                , 0, 50, 0\
+                , 0, 0, 1;
+        tar_Kd_x << 0.01, 0, 0\
+                , 0, 0.5, 0\
+                , 0, 0, 0.01;
+        tar_Kp_w << 1000, 0, 0\
+                , 0, 1000, 0\
+                , 0, 0, 0;
+        tar_Kd_w << 10, 0, 0\
+                , 0, 10, 0\
+                , 0, 0, 0;
+
+    } else if (CommandFlag == STAIR_WALKING) {
+        foot_height = 0.12; //0.10;
+        _alpha = 0.001; // 0.001
+        dsp_time = 0.20;
+        fsp_time = 0.60; //0.07
+        step_time = dsp_time + fsp_time;
+        dsp_cnt = 200;
+        fsp_cnt = 600; //70;
+        step_cnt = dsp_cnt + fsp_cnt;
+
+        tar_Kp_q << 500, 20, 20, 500, 20, 20, 500, 20, 20, 500, 20, 20;
+        tar_Kd_q << 10, 2, 2, 10, 2, 2, 10, 2, 2, 10, 2, 2;
+
+        tar_Kp_t << 2000, 0, 100, 2000, 0, 100, 2000, 0, 100, 2000, 0, 100;
+        tar_Kd_t << 20, 0, 1, 20, 0, 1, 20, 0, 1, 20, 0, 1;
+
+        // for gain scheduling
+        tar_Kp_q_low << 500, 10, 10, 500, 10, 10, 500, 10, 10, 500, 10, 10;
+        tar_Kd_q_low << 10, 1, 1, 10, 1, 1, 10, 1, 1, 10, 1, 1;
+
+        tar_Kp_t_low << 2000, 0, 0, 2000, 0, 0, 2000, 0, 0, 2000, 0, 0;
+        tar_Kd_t_low << 20, 0, 0, 20, 0, 0, 20, 0, 0, 20, 0, 0;
+
+        // ========= QP Gain ========= //
+        tar_Kp_x << 1, 0, 0\
+                , 0, 50, 0\
+                , 0, 0, 10;
+        tar_Kd_x << 0.1, 0, 0\
+                , 0, 5, 0\
+                , 0, 0, 1;
+        tar_Kp_w << 1000, 0, 0\
+                , 0, 1000, 0\
+                , 0, 0, 0;
+        tar_Kd_w << 10, 0, 0\
+                , 0, 10, 0\
+                , 0, 0, 0;
+
+    } else if (CommandFlag == FLYING_TROT_RUNNING || CommandFlag == PRONK_JUMP) {
+
+        swing_foot_height = 0.06; // flying trot
+        _alpha = 0.001;
+
+        // =============== Flying trot parameters initialize =============== //
+        ts = 0.20; //0.22; //0.25;
+        tf = 0.05; //0.07;
+        ft_step_time = ts + tf;
+
+        ts_cnt = 200; //220;
+        tf_cnt = 50;
+        ft_step_cnt = ts_cnt + tf_cnt;
+
+        h_0 = tar_init_com_pos(2);
+        v_0 = 0;
+        a_0 = 0;
+
+        v_1 = 0.20; //0.10; //0.15;
+        a_1 = -GRAVITY;
+
+        h_2 = tar_init_com_pos(2);
+        v_2 = -0.0; //-0.05; // -0.3
+        a_2 = -GRAVITY;
+
+        h_3 = tar_init_com_pos(2);
+        v_3 = 0;
+        a_3 = 0;
+
+        h_1 = 0.5 * GRAVITY * tf * tf - v_1 * tf + h_2;
+
+        // =============== Flying trot parameters initialize END =============== //
+
+        // for gain scheduling
+        tar_Kp_q_low << 200, 100, 100, 200, 100, 100, 0, 200, 100, 100, 200, 100, 100;
+        tar_Kd_q_low << 10, 5, 5, 10, 5, 5, 0, 10, 5, 5, 10, 5, 5;
+
+        tar_Kp_t_low << 2000, 0, 0, 2000, 0, 0, 2000, 0, 0, 2000, 0, 0;
+        tar_Kd_t_low << 20, 0, 0, 20, 0, 0, 20, 0, 0, 20, 0, 0;
+
+        tar_Kp_x << 1, 0, 0\
+                , 0, 30, 0\
+                , 0, 0, 1;
+        tar_Kd_x << 0.1, 0, 0\
+                , 0, 3, 0\
+                , 0, 0, 0.1;
+        tar_Kp_w << 1000, 0, 0\
+                , 0, 500, 0\
+                , 0, 0, 0;
+        tar_Kd_w << 10, 0, 0\
+                , 0, 5, 0\
+                , 0, 0, 0;
+    }
+}
+
+void CRobot::QP_Con_Init(void) {
+    cout << "QP Init Start !! " << endl;
+    // Selection matrix
+    S_mat.block<6, 18>(0, 0) = MatrixNd::Zero(6, 18);
+    S_mat.block<12, 6>(6, 0) = MatrixNd::Zero(12, 6);
+    S_mat.block<12, 12>(6, 6) = MatrixNd::Identity(12, 12);
+
+    des_x_2dot << 0, 0, 0;
+    des_w_dot << 0, 0, 0;
+
+    //    _m = 46;//43;//53; //48.5; //kg
+    _m = 53;
+    //    _I_g << 1.7214, -0.0038, -0.1540,
+    //            -0.0038, 4.9502, -0.0006,
+    //            -0.1540, -0.0006, 5.1152;
+
+    //    _I_g << 1.7214, 0, 0,
+    //            0, 4.9502, 0,
+    //            0, 0, 5.1152;
+
+    //    _I_g << 1.5, 0, 0,
+    //            0, 4.0, 0,
+    //            0, 0, 2.0;
+    //     _I_g << 1.5, 0, 0,
+    //            0, 5.0, 0,
+    //            0, 0, 2.0;
+
+    _I_g << 1.5, 0, 0\
+            , 0, 5.0, 0\
+            , 0, 0, 2.0;
+
+    //    _I_g << 0.7, 0, 0,
+    //           0, 4.0, 0,
+    //           0, 0, 2.0;
+
+    _A.block<3, 3>(0, 0) = MatrixNd::Identity(3, 3);
+    _A.block<3, 3>(0, 3) = MatrixNd::Identity(3, 3);
+    _A.block<3, 3>(0, 6) = MatrixNd::Identity(3, 3);
+    _A.block<3, 3>(0, 9) = MatrixNd::Identity(3, 3);
+
+    tar_RL_foot_pos_local = tar_init_RL_foot_pos - init_base_pos;
+    tar_RR_foot_pos_local = tar_init_RR_foot_pos - init_base_pos;
+    tar_FL_foot_pos_local = tar_init_FL_foot_pos - init_base_pos;
+    tar_FR_foot_pos_local = tar_init_FR_foot_pos - init_base_pos;
+
+//    cout << "tar_RL_foot_pos_local = " << tar_RL_foot_pos_local.transpose() << endl;
+//    cout << "tar_RR_foot_pos_local = " << tar_RR_foot_pos_local.transpose() << endl;
+//    cout << "tar_FL_foot_pos_local = " << tar_FL_foot_pos_local.transpose() << endl;
+//    cout << "tar_FR_foot_pos_local = " << tar_FR_foot_pos_local.transpose() << endl;
+
+    p_com_oross_pro << 0, -tar_RL_foot_pos_local(2), tar_RL_foot_pos_local(1), 0, -tar_RR_foot_pos_local(2), tar_RR_foot_pos_local(1), 0, -tar_FL_foot_pos_local(2), tar_FL_foot_pos_local(1), 0, -tar_FR_foot_pos_local(2), tar_FR_foot_pos_local(1)\
+            , tar_RL_foot_pos_local(2), 0, -tar_RL_foot_pos_local(0), tar_RR_foot_pos_local(2), 0, -tar_RR_foot_pos_local(0), tar_FL_foot_pos_local(2), 0, -tar_FL_foot_pos_local(0), tar_FR_foot_pos_local(2), 0, -tar_FR_foot_pos_local(0)\
+            , -tar_RL_foot_pos_local(1), tar_RL_foot_pos_local(0), 0, -tar_RR_foot_pos_local(1), tar_RR_foot_pos_local(0), 0, -tar_FL_foot_pos_local(1), tar_FL_foot_pos_local(0), 0, -tar_FR_foot_pos_local(1), tar_FR_foot_pos_local(0), 0;
+
+    _A.block<3, 12>(3, 0) = p_com_oross_pro;
+
+    _g << 0, 0, 9.81;
+
+    _b << _m * (des_x_2dot + _g), _I_g * des_w_dot;
+
+//    cout << "_b = " << _b << endl;
+//    //    fx_max = 50;
+//    //    fx_min = -50;
+//    //    fy_max = 50;
+//    //    fy_min = -50;
+//
+    _P = _A.transpose() * _S * _A + _alpha * _W;
+    _q = -_A.transpose() * _S * _b;
+
+    // ===================== OSQP  ====================== //
+    int jj = 0;
+    int kk = 0;
+    int max_jj = 0;
+//
+    // ===================== P_x ====================== //
+    for (unsigned int i = 0; i < P_nnz; ++i) {
+        P_x[i] = _P(jj, kk);
+        jj = jj + 1;
+
+        if (jj > max_jj) {
+            jj = 0;
+            kk = kk + 1;
+            max_jj = max_jj + 1;
+        }
+        //        cout << "i = " << i << ", P_x = " << P_x[i] << endl;
+    }
+
+    // ===================== P_i ====================== //
+    jj = 0;
+    max_jj = 0;
+
+    for (unsigned int i = 0; i < P_nnz; ++i) {
+        P_i[i] = jj;
+        jj = jj + 1;
+
+        if (jj > max_jj) {
+            jj = 0;
+            max_jj = max_jj + 1;
+        }
+        //        cout << "i = " << i << ", P_i = " << P_i[i] << endl;
+    }
+
+    // ===================== P_p ====================== //
+    P_p[0] = 0;
+    for (unsigned int i = 1; i < A_nnz + 1; ++i) {
+        P_p[i] = P_p[i - 1] + i;
+
+        //        cout << "i = " << i-1 << ", P_p = " << P_p[i-1] << endl;
+    }
+    //    cout << "i = " << A_nnz << ", P_p = " << P_p[A_nnz] << endl;
+
+    // ===================== A_x ====================== //
+
+    for (unsigned int i = 0; i < A_nnz; ++i) {
+        A_x[i] = 1;
+
+        //        cout << "i = " << i << ", A_x = " << A_x[i] << endl;
+    }
+
+    // ===================== A_i ====================== //
+
+    for (unsigned int i = 0; i < A_nnz; ++i) {
+        A_i[i] = i;
+
+        //        cout << "i = " << i << ", A_i = " << A_i[i] << endl;
+    }
+
+    // ===================== A_p ====================== //
+    jj = 0;
+    for (unsigned int i = 0; i < A_nnz + 1; ++i) {
+        A_p[i] = jj;
+
+        jj = jj + 1;
+
+        //        cout << "i = " << i << ", A_p = " << A_p[i] << endl;
+    }
+//    //        cout << "i = " << A_nnz << ", A_p = " << A_p[A_nnz] << endl;
+//    // ===================== G_l & G_u ====================== //
+
+    //    fz_max = 500;
+    //    fz_min = 0;
+
+    _c << 1, 1, 1, 1;
+
+    if (_c(0) == 0) {
+        fz_RL_max = 0;
+        fz_RL_min = 0;
+    } else {
+        fz_RL_max = max_Fext_z;
+        fz_RL_min = 0;
+    }
+
+    if (_c(1) == 0) {
+        fz_RR_max = 0;
+        fz_RR_min = 0;
+    } else {
+        fz_RR_max = max_Fext_z;
+        fz_RR_min = 0;
+    }
+
+    if (_c(2) == 0) {
+        fz_FL_max = 0;
+        fz_FL_min = 0;
+    } else {
+        fz_FL_max = max_Fext_z;
+        fz_FL_min = 0;
+    }
+
+    if (_c(3) == 0) {
+        fz_FR_max = 0;
+        fz_FR_min = 0;
+    } else {
+        fz_FR_max = max_Fext_z;
+        fz_FR_min = 0;
+    }
+
+    Fc << 0, 0, 0, 0, 0, 0, 0, 0, 140, 0, 0, 140, 0, 0, 140, 0, 0, 140;
+
+    _d_u << mu * abs(Fc(2 + 6)), mu * abs(Fc(2 + 6)), fz_RL_max, mu * abs(Fc(5 + 6)), mu * abs(Fc(5 + 6)), fz_RR_max, mu * abs(Fc(8 + 6)), mu * abs(Fc(8 + 6)), fz_FL_max, mu * abs(Fc(11 + 6)), mu * abs(Fc(11 + 6)), fz_FR_max;
+    _d_l << -mu * abs(Fc(2 + 6)), -mu * abs(Fc(2 + 6)), fz_RL_min, -mu * abs(Fc(5 + 6)), -mu * abs(Fc(5 + 6)), fz_RR_min, -mu * abs(Fc(8 + 6)), -mu * abs(Fc(8 + 6)), fz_FL_min, -mu * abs(Fc(11 + 6)), -mu * abs(Fc(11 + 6)), fz_FR_min;
+
+    //    c_vec << _c(0),_c(0),_c(0),_c(1),_c(1),_c(1),_c(2),_c(2),_c(2),_c(3),_c(3),_c(3);
+
+    //    cout << "c_vec = " << c_vec.transpose() << endl;
+
+    for (unsigned int i = 0; i < A_nnz; ++i) {
+        l[i] = _d_l(i);
+        u[i] = _d_u(i);
+
+        //        cout << "i = " << i << ", G_l = " << G_l[i] << endl;
+        //        cout << "i = " << i << ", G_u = " << G_u[i] << endl;
+        //        cout << "==============================" << endl;
+    }
+
+    for (unsigned int i = 0; i < A_nnz; ++i) {
+        q[i] = _q(i);
+    }
+
+    // Populate data
+    if (QP_data) {
+        QP_data->n = n;
+        QP_data->m = m;
+        QP_data->P = csc_matrix(QP_data->n, QP_data->n, P_nnz, P_x, P_i, P_p);
+        QP_data->q = q;
+        QP_data->A = csc_matrix(QP_data->m, QP_data->n, A_nnz, A_x, A_i, A_p);
+        QP_data->l = l;
+        QP_data->u = u;
+    }
+
+    // Define solver settings as default
+    if (QP_settings) {
+        osqp_set_default_settings(QP_settings);
+        QP_settings->alpha = 1; // Change alpha parameter
+    }
+
+    // Setup workspace
+    QP_exitflag = osqp_setup(&QP_work, QP_data, QP_settings);
+
+    // Solve Problem
+    osqp_solve(QP_work);
+
+    cout << "[RL] x = " << QP_work->solution->x[0] << ", y = "
+            << QP_work->solution->x[1] << ", z = " << QP_work->solution->x[2]
+            << endl;
+    cout << "[RR] x = " << QP_work->solution->x[3] << ", y = "
+            << QP_work->solution->x[4] << ", z = " << QP_work->solution->x[5]
+            << endl;
+    cout << "[FL] x = " << QP_work->solution->x[6] << ", y = "
+            << QP_work->solution->x[7] << ", z = " << QP_work->solution->x[8]
+            << endl;
+    cout << "[FR] x = " << QP_work->solution->x[9] << ", y = "
+            << QP_work->solution->x[10] << ", z = " << QP_work->solution->x[11]
+            << endl;
+
+    cout << "QP Init Done !! " << endl;
+
+    // Cleanup
+    // ==================== OSQP TEST END =================== //
+
 }

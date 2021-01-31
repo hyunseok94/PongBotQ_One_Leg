@@ -6,6 +6,8 @@
 #include "servo_def.h"
 #include "main.h"
 
+#include "osqp.h"
+
 //#define PI  3.14159265359
 //#define PI2 6.28318530718
 #define GRAVITY 9.81
@@ -20,130 +22,58 @@
 #define AXIS_Pitch 4
 #define AXIS_Yaw   5
 
-using Eigen::VectorXd;
 using namespace std;
 using namespace RigidBodyDynamics;
 using namespace RigidBodyDynamics::Math;
 
 typedef enum {
-    CTRLMODE_NONE = 0,
-    CTRLMODE_INITIALIZE, //1
-    CTRLMODE_WALK_READY_HS, //2
-    CTRLMODE_CYCLE_TEST_HS, //3
-    CTRLMODE_JOYSTICK_HS, //4
-    //    CTRLMODE_WALK_HS, //4
-    //    CTRLMODE_POSTURE_GENERATION_HS, //5
-    //    CTRLMODE_TEST_HS //6
+    MODE_SIMULATION, MODE_ACTUAL_ROBOT
+} _MODE;
+
+typedef enum {
+    CTRLMODE_NONE,
+    CTRLMODE_HOME_POS,
+    CTRLMODE_WALK_READY,
+    CTRLMODE_TROT_WALKING,
+    CTRLMODE_FLYING_TROT,
+    CTRLMODE_PRONK_JUMP,
+    CTRLMODE_TEST,
+    CTRLMODE_TORQUE_OFF,
+    CTRLMODE_STAIR,
+    CTRLMODE_SLOW_WALK_HS
 } _CONTROL_MODE;
 
 typedef enum {
-    JOYMODE_NONE = 0,
-    JOYMODE_HOME, //1
-    JOYMODE_MOVE, //2
-    JOYMODE_WALK //3
-} _JOY_MODE;
-
-typedef enum {
     NO_ACT,
-    EXIT_PROGRAM,
-    SET_MOTOR_GAIN,
-    SET_CURRENT_GAIN,
-    LOAD_PARAMETER,
-    SAVE_PARAMETER,
-    SET_JOINT_PARAMETER,
-    GET_JOINT_PARAMETER,
-    SET_BOARD_PARAMETER,
-    GET_BOARD_PARAMETER,
-    PRINT_JOINT_PARAMETER,
-    CHECK_DEVICE,
-    GAIN_SETTING,
-    ENABLE_FET,
-    ENABLE_FET_EACH,
-    DISABLE_FET,
-    DISABLE_FET_EACH,
-    RUN_CMD,
-    RUN_CMD_EACH,
-    STOP_CMD,
-    STOP_CMD_EACH,
-    GOTO_LIMIT_POS,
-    GOTO_LIMIT_POS_UPPER_ALL,
-    GOTO_LIMIT_POS_LOWER_ALL,
-    GOTO_LIMIT_POS_ALL,
-    ENCODER_ZERO,
-    ENCODER_ZERO_EACH,
-    SAVE_ZMP_INIT_POS,
-    SET_ENCODER_RESOLUTION,
-    SET_DEADZONE,
-    SET_JAMPWM_FAULT,
-    SET_MAX_VEL_ACC,
-    SET_CONTROL_MODE,
-    SET_HOME_SEARCH_PARAMETER,
-    SET_HOME_MAX_VEL_ACC,
-    SET_POSITION_LIMIT,
-    SET_ERROR_BOUND,
-    REQUEST_PARAMETER,
-    POSITION_LIMIT_ONOFF,
-    BEEP,
-    JOINT_REF_SET_RELATIVE,
-    JOINT_REF_SET_ABS,
-    SET_FT_PARAMETER,
-    GET_FT_PARAMETER,
-    NULL_FT_SENSOR,
-    NULL_WRIST_FT_SENSOR,
-    NULL_FOOT_ANGLE_SENSOR,
-    NULL_IMU_SENSOR,
-    SET_IMU_OFFSET,
-    PRINT_FT_PARAMETER,
-    SET_IMU_PARAMETER,
-    GET_IMU_PARAMETER,
-    PRINT_IMU_PARAMETER,
-    SET_DAMPING_GAIN,
-    SET_DSP_GAIN,
-    GOTO_WALK_READY_POS,
     GOTO_HOME_POS,
-    START_ZMP_INITIALIZATION,
-    STOP_ZMP_INITIALIZATION,
-    GOTO_FORWARD,
-    STOP_WALKING,
-    SET_MOCAP,
-    C_CONTROL_MODE,
-    P_CONTROL_MODE,
-    GRIP_ON,
-    GRIP_OFF,
-    GRIP_STOP,
-    DEMO_FLAG,
-    TEST_FUNCTION,
-    DEMO_GRASP, // jungho77
-    SET_PREDEF_WALK, // jungho77
-    INIT_WB_MOCAP, // by Inhyeok
-    DEMO_CONTROL_OFF_POS,
-    DEMO_CONTROL_ON_POS,
-    RBT_ON_MODE, //CDI
-    RBT_OFF_MODE, //CDI
-    CCTM_ON,
-    CCTM_OFF,
-    JUMP_ONESTEP, // BKCho
+    GOTO_WALK_READY_POS,
     NOMAL_TROT_WALKING,
     FLYING_TROT_RUNNING,
     TORQUE_OFF,
-    NO_ACT_WITH_CTC,
-    GOTO_INIT_POS_HS,
-    GOTO_WALK_READY_POS_HS,
-    GOTO_TROT_POS_HS,
-    GOTO_WALK_POS_HS,
-    GOTO_POSTURE_GENERATION_HS,
-    GOTO_TEST_POS_HS,
-    GOTO_CYCLE_POS_HS,
-    GOTO_JOYSTICK_POS_HS
-
+    PRONK_JUMP,
+    TEST_FLAG,
+    STAIR_WALKING,
+    GOTO_SLOW_WALK_POS_HS
 } _COMMAND_FLAG;
 
 typedef enum {
-    TEST_NONE = 0,
-    TEST_STATIC_POSE,
-    TEST_STATIC_ORI,
-    TEST_CYCLE_POSE
-} _TEST_MODE;
+    TW_PHASE_INIT,
+    TW_DSP_RLFR_FIRST,
+    TW_FSP,
+    TW_DSP_RRFL,
+    TW_DSP_RLFR,
+    TW_FSP_FINAL
+
+} _TW_PHASE;
+
+typedef enum {
+    CONTACT_OFF, CONTACT_ON
+
+} _CONTACT_INFO;
+
+typedef enum {
+    QP_CON, MPC_CON
+} _WB_CON;
 
 typedef struct Base //coordinate of Base
 {
@@ -204,49 +134,25 @@ typedef struct FTSennsor {
 } FTS;
 
 typedef struct EndPoint {
-    //ORI orientation;
-    //POS pos;
     FTS ftSensor;
-
-    VectorNd current; //* Current values
-    VectorNd pre; //* Pre values
-    VectorNd vel; //* vel values
-    VectorNd prevel;
-    VectorNd acc;
-    VectorNd preacc;
-
-    VectorNd refpos; //* Current values
-    VectorNd prerefpos; //* Pre values
-    VectorNd refvel;
-    VectorNd prerefvel; //* Pre values
-    VectorNd refacc;
-    VectorNd Target;
-    Matrix3d T_matrix;
-
+    RigidBodyDynamics::Math::VectorNd current; //* Current values
+    RigidBodyDynamics::Math::VectorNd pre; //* Pre values
+    RigidBodyDynamics::Math::VectorNd vel; //* vel values
+    RigidBodyDynamics::Math::VectorNd prevel;
+    RigidBodyDynamics::Math::VectorNd acc;
+    RigidBodyDynamics::Math::VectorNd preacc;
+    RigidBodyDynamics::Math::VectorNd refpos; //* Current values
+    RigidBodyDynamics::Math::VectorNd prerefpos; //* Pre values
+    RigidBodyDynamics::Math::VectorNd refvel;
+    RigidBodyDynamics::Math::VectorNd prerefvel; //* Pre values
+    RigidBodyDynamics::Math::VectorNd refacc;
+    RigidBodyDynamics::Math::VectorNd Target;
+    RigidBodyDynamics::Math::Matrix3d T_matrix;
     int ID;
 } ENDPOINT;
 
 class CRobot {
 public:
-    //Functions
-    CRobot();
-    CRobot(const CRobot& orig);
-    virtual ~CRobot();
-
-    void Joint_Controller(void);
-    void Cartesian_Controller(void);
-    VectorNd Localization_Hip2Base_Pos_HS(VectorNd EP_pos_local_hip);
-    void Mode_Change(void);
-    void Controller_Change(void);
-    void Init_Pos_Traj_HS(void); // Joint target
-    void Home_Pos_Traj_HS(void); // End point target
-    void Cycle_Test_Pos_Traj_HS(void);
-    void Joystick_Pos_Traj_HS(void);
-    void ComputeTorqueControl(void);
-    void SF_EP_Traj_Gen_HS(double travel_time, VectorNd init_EP_pos, VectorNd goal_EP_pos);
-    void coefficient_5thPoly(double *init_x, double *final_x, double tf, double *output);
-    
-
     /*******Motor & Encoder Setting parameters**********/
     double Count2Deg(int Gear_Ratio, INT32 Count);
     double Count2DegDot(int Gear_Ratio, INT32 CountPerSec);
@@ -255,16 +161,58 @@ public:
     double Count2Rad_ABS(int _Resolution, INT32 Count);
     INT16 Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur);
     
-    bool Encoder_Reset_Flag = true;
-    int Gear[NUM_OF_ELMO] = {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50};
-    double ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9, 8.9, 2.85, 2.85, 2.85, 2.85, 8.9, 8.9, 2.85, 2.85};
-    double Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156, 0.156, 0.159, 0.159, 0.159, 0.159, 0.156, 0.156, 0.159, 0.159};
-    int32_t Resolution[NUM_OF_ELMO] = {262144, 262144, 16384, 16384, 262144, 262144,  262144, 262144, 16384, 16384 , 262144, 262144}; //16384(2^14)
+    int Low_Gear[NUM_OF_ELMO] = {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50};
+    double Low_ratedCur[NUM_OF_ELMO] = {2.85, 2.85, 8.9, 8.9, 2.85, 2.85, 2.85, 2.85, 8.9, 8.9, 2.85, 2.85};
+    double Low_Kt[NUM_OF_ELMO] = {0.159, 0.159, 0.156, 0.156, 0.159, 0.159, 0.159, 0.159, 0.156, 0.156, 0.159, 0.159};
+    int32_t Low_Resolution[NUM_OF_ELMO] = {262144, 262144, 16384, 16384, 262144, 262144,  262144, 262144, 16384, 16384 , 262144, 262144}; //16384(2^14)
 
-    //**************************** RBDL **************************//
+    //**********************Functions***************//
+    CRobot();
+    CRobot(const CRobot& orig);
+    virtual ~CRobot();
     void setRobotModel(Model* getModel); //* get Robot Model
     void getRobotState(VectorNd BasePosOri, VectorNd BaseVel, VectorNd jointAngle, VectorNd jointVel);
+    void StateUpdate(void);
+    void ComputeTorqueControl(void);
+    void Torque_off(void);
+    void FK2(void);
+    VectorNd IK1(VectorNd EP);
+    VectorNd Get_COM(VectorNd base, VectorNd q);
+    void coefficient_5thPoly(double *init_x, double *final_x, double tf, double *output);
+    void Get_act_com(void);   
+    void WalkReady_Pos_Traj(void);
+    void set_simul_para(void);
+    void set_act_robot_para(void);
+    void QP_Con_Init(void);
     
+    VectorNd FK(VectorNd q);
+    VectorNd IK(VectorNd pos);
+    void ComputeTorqueControl_HS(void);
+    //void Joint_Controller(void);
+    //void Cartesian_Controller(void);   
+    //void Controller_Change(void);
+    //void Init_Pos_Traj_HS(void); // Joint target
+   // void Home_Pos_Traj_HS(void); // End point target
+    //void SF_EP_Traj_Gen_HS(double travel_time, VectorNd init_EP_pos, VectorNd goal_EP_pos);
+    
+    //*************************[Constructor]****************************//
+    int Mode;
+    int WH_Mode;
+    int ControlMode = 0;
+    int CommandFlag = 0;
+    
+    //*************************[Time & Counts]****************************//
+    double dt = 0.001;
+    int move_cnt = 0;
+    unsigned int wr_cnt = 0;
+    double dsp_time;
+    double fsp_time;
+    double step_time; // = dsp_time + fsp_time;
+    int dsp_cnt;
+    int fsp_cnt;
+    int step_cnt; // = dsp_cnt + fsp_cnt;
+        
+     //**************************** [RBDL Paramter] **************************//
     BASE base; //* coordinate of Body
     JOINT* joint; //* joints of the robot
     ENDPOINT FR, FL, RR, RL;
@@ -276,15 +224,15 @@ public:
     VectorNd RobotState2dot = VectorNd::Zero(18);
     VectorNd BasePosOri = VectorNd::Zero(6);
     VectorNd BaseVel = VectorNd::Zero(6);
-
+    VectorNd JointAngle = VectorNd::Zero(12);
+    VectorNd JointVel = VectorNd::Zero(12);
     Math::Quaternion QQ;
-
+    
     MatrixNd M_term = MatrixNd::Zero(18, 18); //10=3*1+6+1
     VectorNd hatNonLinearEffects = VectorNd::Zero(18);
     VectorNd G_term = VectorNd::Zero(18);
     VectorNd C_term = VectorNd::Zero(18);
-    VectorNd CTC_Torque = VectorNd::Zero(18);
-
+    
     double L3_x = 0; //0.025516;
     double L3_y = 0; //0.0;
     double L3_z = 0.309; //0.304515;
@@ -296,7 +244,7 @@ public:
     
     Vector3d Originbase = Vector3d(0, 0, 0);
 
-    MatrixNd J_BASE = MatrixNd::Zero(6, 9);   
+    MatrixNd J_BASE = MatrixNd::Zero(6, 18);   
     MatrixNd J_RL = MatrixNd::Zero(3, 18);
     MatrixNd J_RR = MatrixNd::Zero(3, 18);
     MatrixNd J_FL = MatrixNd::Zero(3, 18);
@@ -306,12 +254,9 @@ public:
     MatrixNd J_FL2 = MatrixNd::Zero(3, 3);
     MatrixNd J_FR2 = MatrixNd::Zero(3, 3);
     
-    MatrixNd J_A = MatrixNd::Zero(12, 12);
+    MatrixNd J_A = MatrixNd::Zero(18, 18);
     
      /***************Matrix for FK,IK*****************/
-    //Variable  of Rear Left
-    VectorNd FK(VectorNd q);
-    VectorNd IK(VectorNd pos);
     MatrixNd Jac(VectorNd q);
     
     double l1 = 0.105;
@@ -343,18 +288,37 @@ public:
     MatrixNd FR_HP2KN = MatrixNd::Zero(4, 4);
     MatrixNd FR_KN2T = MatrixNd::Zero(4, 4);
     
-    //***************
-    VectorNd Raw_ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd Raw_Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd Raw_actual_joint_vel = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd online_ABS_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
+    //***************** IMU Parameters *********************//
+    double IMURoll = 0.0;
+    double IMUPitch = 0.0;
+    double IMUYaw = 0.0;
+    double init_IMUYaw = 0.0;
+    double IMURoll_dot = 0.0;
+    double IMUPitch_dot = 0.0;
+    double IMUYaw_dot = 0.0;
+    double IMUAccX = 0.0;
+    double IMUAccY = 0.0;
+    double IMUAccZ = 0.0;
+    //***************Joint Parameters **********************//
+    VectorNd Low_ABS_actual_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Low_Incre_actual_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Low_actual_vel = VectorNd::Zero(NUM_OF_ELMO);
+    
+    VectorNd ABS_actual_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd Incre_actual_pos = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd tmp_Incre_actual_joint_pos = VectorNd::Zero(NUM_OF_ELMO);
-
-    VectorNd actual_joint_vel = VectorNd::Zero(NUM_OF_ELMO);
-    VectorNd actual_EP_pos_local = VectorNd::Zero(NUM_OF_ELMO);
+    
+    VectorNd actual_pos = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd actual_vel = VectorNd::Zero(NUM_OF_ELMO);
+    VectorNd actual_acc = VectorNd::Zero(NUM_OF_ELMO);
+    
+    //***************Base Parameters **********************//
+    VectorNd base_ori_quat = VectorNd::Zero(4); // roll,pitch,yaw
+//    VectorNd base_pos = VectorNd::Zero(3);
+    VectorNd base_vel = VectorNd::Zero(3);
+    VectorNd base_ori = VectorNd::Zero(3);
+    VectorNd base_ori_dot = VectorNd::Zero(3);
+    
     VectorNd actual_base_ori_local = VectorNd::Zero(3);
     VectorNd actual_base_ori_vel_local = VectorNd::Zero(3);
     VectorNd actual_base_acc_local = VectorNd::Zero(3);
@@ -365,7 +329,340 @@ public:
     VectorNd actual_base_ori_local2 = VectorNd::Zero(3);
     VectorNd actual_base_ori_vel_local2 = VectorNd::Zero(3);
     VectorNd actual_base_acc_local2 = VectorNd::Zero(3);
+        
+    //*************************** Flags ************************//
+    bool moving_done_flag = true;
+    bool move_stop_flag = false;
+    bool pre_sub_ctrl_flag_HS = false;
+    bool walk_ready_moving_done_flag = false;
+    bool CP_con_onoff_flag;
+    bool Slope_con_onoff_flag;
+    bool gain_scheduling_flag;
     
+    //****************** Move Paramter ****************//
+    double x_moving_speed = 0.0;
+    double y_moving_speed = 0.0;
+    double pre_x_moving_speed = 0.0;
+    double tmp_x_moving_speed = 0.0;
+    double tmp_y_moving_speed = 0.0;
+    VectorNd tmp_base_ori = VectorNd::Zero(3);
+    double speed_x_HS = 0.0;
+    double speed_y_HS = 0.0;
+    double speed_yaw_HS = 0.0;
+    
+    //******************WalkReady Paramters *****************//
+    double walk_ready_time = 2;
+    unsigned int walk_ready_cnt = 2000;
+    
+    int contact_num = 4;
+    double pos_alpha = 0;
+    double vel_alpha = 0;
+    VectorNd base_offset = VectorNd::Zero(3, 1);
+    
+    double foot_height = 0.0;
+    double com_height;
+    
+    double lpf_tar_pitch_ang = 0.0;
+    double fc_weight = 0.0;
+    
+    //*************[Joint Paramters Init] ************//
+    VectorNd init_target_pos = VectorNd::Zero(12);
+    VectorNd target_pos = VectorNd::Zero(12);
+    VectorNd target_vel = VectorNd::Zero(12);
+    VectorNd target_acc = VectorNd::Zero(12);
+        
+    VectorNd tar_RL_q_dot = VectorNd::Zero(3);
+    VectorNd tar_RR_q_dot = VectorNd::Zero(3);
+    VectorNd tar_FL_q_dot = VectorNd::Zero(3);
+    VectorNd tar_FR_q_dot = VectorNd::Zero(3);
+
+    VectorNd act_RL_q_dot = VectorNd::Zero(3);
+    VectorNd act_RR_q_dot = VectorNd::Zero(3);
+    VectorNd act_FL_q_dot = VectorNd::Zero(3);
+    VectorNd act_FR_q_dot = VectorNd::Zero(3);
+    //***************End point Parameters **********************//
+    
+    VectorNd RL_foot_pos_local_offset = VectorNd::Zero(3);
+    VectorNd RR_foot_pos_local_offset = VectorNd::Zero(3);
+    VectorNd FL_foot_pos_local_offset = VectorNd::Zero(3);
+    VectorNd FR_foot_pos_local_offset = VectorNd::Zero(3);
+        
+    VectorNd base2hip_pos = VectorNd::Zero(12);
+    VectorNd RL_base2hip_pos = VectorNd::Zero(3);
+    VectorNd RR_base2hip_pos = VectorNd::Zero(3);
+    VectorNd FL_base2hip_pos = VectorNd::Zero(3);
+    VectorNd FR_base2hip_pos = VectorNd::Zero(3);
+    
+    VectorNd act_RL_foot_pos_local = VectorNd::Zero(3);
+    VectorNd act_RR_foot_pos_local = VectorNd::Zero(3);
+    VectorNd act_FL_foot_pos_local = VectorNd::Zero(3);
+    VectorNd act_FR_foot_pos_local = VectorNd::Zero(3);
+
+    VectorNd act_RL_foot_pos = VectorNd::Zero(3);
+    VectorNd act_RR_foot_pos = VectorNd::Zero(3);
+    VectorNd act_FL_foot_pos = VectorNd::Zero(3);
+    VectorNd act_FR_foot_pos = VectorNd::Zero(3);
+    
+    VectorNd act_RL_foot_vel = VectorNd::Zero(3);
+    VectorNd act_RR_foot_vel = VectorNd::Zero(3);
+    VectorNd act_FL_foot_vel = VectorNd::Zero(3);
+    VectorNd act_FR_foot_vel = VectorNd::Zero(3);
+
+    VectorNd actual_EP = VectorNd::Zero(12);
+    VectorNd actual_EP_vel = VectorNd::Zero(12);
+    VectorNd actual_EP_acc = VectorNd::Zero(12);
+        
+    VectorNd target_EP = VectorNd::Zero(12);
+    VectorNd RL_foot_pos = VectorNd::Zero(3);
+    VectorNd RR_foot_pos = VectorNd::Zero(3);
+    VectorNd FL_foot_pos = VectorNd::Zero(3);
+    VectorNd FR_foot_pos = VectorNd::Zero(3);
+    VectorNd init_RL_foot_pos = VectorNd::Zero(3);
+    VectorNd init_RR_foot_pos = VectorNd::Zero(3);
+    VectorNd init_FL_foot_pos = VectorNd::Zero(3);
+    VectorNd init_FR_foot_pos = VectorNd::Zero(3);    
+    VectorNd tar_init_RL_foot_pos = VectorNd::Zero(3);
+    VectorNd tar_init_RR_foot_pos = VectorNd::Zero(3);
+    VectorNd tar_init_FL_foot_pos = VectorNd::Zero(3);
+    VectorNd tar_init_FR_foot_pos = VectorNd::Zero(3);
+    
+    VectorNd tar_RL_foot_pos_local = VectorNd::Zero(3);
+    VectorNd tar_RR_foot_pos_local = VectorNd::Zero(3);
+    VectorNd tar_FL_foot_pos_local = VectorNd::Zero(3);
+    VectorNd tar_FR_foot_pos_local = VectorNd::Zero(3);
+    
+    VectorNd RL_foot_vel = VectorNd::Zero(3);
+    VectorNd RR_foot_vel = VectorNd::Zero(3);
+    VectorNd FL_foot_vel = VectorNd::Zero(3);
+    VectorNd FR_foot_vel = VectorNd::Zero(3);
+    VectorNd tar_init_RL_foot_vel = VectorNd::Zero(3);
+    VectorNd tar_init_RR_foot_vel = VectorNd::Zero(3);
+    VectorNd tar_init_FL_foot_vel = VectorNd::Zero(3);
+    VectorNd tar_init_FR_foot_vel = VectorNd::Zero(3);
+
+    VectorNd tar_RL_foot_vel_local = VectorNd::Zero(3);
+    VectorNd tar_RR_foot_vel_local = VectorNd::Zero(3);
+    VectorNd tar_FL_foot_vel_local = VectorNd::Zero(3);
+    VectorNd tar_FR_foot_vel_local = VectorNd::Zero(3);
+    
+    //*************Base & COM ****************///
+    VectorNd act_base_pos = VectorNd::Zero(3);
+    VectorNd act_base_vel = VectorNd::Zero(3);
+    VectorNd tmp_act_base_pos = VectorNd::Zero(3);
+    VectorNd tmp_act_base_vel = VectorNd::Zero(3);   
+    
+    VectorNd tmp_com_pos = VectorNd::Zero(3);
+    VectorNd act_com_pos = VectorNd::Zero(3);
+    VectorNd act_com_vel = VectorNd::Zero(3);
+    VectorNd act_com_acc = VectorNd::Zero(3);
+    VectorNd pre_act_com_vel = VectorNd::Zero(3);
+    VectorNd tmp_act_com_acc = VectorNd::Zero(3);
+    
+    VectorNd act_base_ori = VectorNd::Zero(3);
+    VectorNd act_base_ori_dot = VectorNd::Zero(3);
+    VectorNd tmp_act_base_ori = VectorNd::Zero(3);
+    VectorNd tmp_act_base_ori_dot = VectorNd::Zero(3);
+    
+    VectorNd base_pos = VectorNd::Zero(3); // x,y,z
+    VectorNd com_pos = VectorNd::Zero(3); // x,y,z
+    VectorNd com_vel = VectorNd::Zero(3); // x,y,z
+    VectorNd pre_com_pos = VectorNd::Zero(3); // x,y,z
+    VectorNd pre_com_vel = VectorNd::Zero(3);
+    VectorNd init_base_pos = VectorNd::Zero(3);
+    VectorNd init_base_ori = VectorNd::Zero(3);
+    
+    VectorNd init_com_pos = VectorNd::Zero(3);
+    VectorNd tar_init_com_pos = VectorNd::Zero(3);
+    VectorNd init_com_vel = VectorNd::Zero(3);
+    VectorNd tar_init_com_vel = VectorNd::Zero(3); // x,y,z
+    VectorNd tar_init_com_acc = VectorNd::Zero(3); // x,y,z
+
+    VectorNd base_pos_ori = VectorNd::Zero(6);
+    
+    //**************[CoM Position Parameters Init]******************//
+    VectorNd p_base2body_com = VectorNd::Zero(4);
+    VectorNd p_RL_hp_com = VectorNd::Zero(4);
+    VectorNd p_RL_thigh_com = VectorNd::Zero(4);
+    VectorNd p_RL_calf_com = VectorNd::Zero(4);
+    VectorNd p_RR_hp_com = VectorNd::Zero(4);
+    VectorNd p_RR_thigh_com = VectorNd::Zero(4);
+    VectorNd p_RR_calf_com = VectorNd::Zero(4);
+    VectorNd p_FL_hp_com = VectorNd::Zero(4);
+    VectorNd p_FL_thigh_com = VectorNd::Zero(4);
+    VectorNd p_FL_calf_com = VectorNd::Zero(4);
+    VectorNd p_FR_hp_com = VectorNd::Zero(4);
+    VectorNd p_FR_thigh_com = VectorNd::Zero(4);
+    VectorNd p_FR_calf_com = VectorNd::Zero(4);
+    
+    MatrixNd R_w2base_R = MatrixNd::Zero(4, 4);
+    MatrixNd R_w2base_P = MatrixNd::Zero(4, 4);
+    MatrixNd R_w2base_Y = MatrixNd::Zero(4, 4);
+    MatrixNd R_w2base = MatrixNd::Zero(4, 4);
+    MatrixNd T_w2base = MatrixNd::Zero(4, 4);
+    MatrixNd TR_RL_base2hp = MatrixNd::Zero(4, 4);
+    MatrixNd TR_RL_hp2thigh = MatrixNd::Zero(4, 4);
+    MatrixNd TR_RL_thigh2calf = MatrixNd::Zero(4, 4);
+    MatrixNd TR_RR_base2hp = MatrixNd::Zero(4, 4);
+    MatrixNd TR_RR_hp2thigh = MatrixNd::Zero(4, 4);
+    MatrixNd TR_RR_thigh2calf = MatrixNd::Zero(4, 4);
+    MatrixNd TR_FL_base2hp = MatrixNd::Zero(4, 4);
+    MatrixNd TR_FL_hp2thigh = MatrixNd::Zero(4, 4);
+    MatrixNd TR_FL_thigh2calf = MatrixNd::Zero(4, 4);
+    MatrixNd TR_FR_base2hp = MatrixNd::Zero(4, 4);
+    MatrixNd TR_FR_hp2thigh = MatrixNd::Zero(4, 4);
+    MatrixNd TR_FR_thigh2calf = MatrixNd::Zero(4, 4);
+    
+    VectorNd p_RL_base2hp_com = VectorNd::Zero(4, 1);
+    VectorNd p_RL_base2thigh_com = VectorNd::Zero(4, 1);
+    VectorNd p_RL_base2calf_com = VectorNd::Zero(4, 1);
+    VectorNd p_RL_com = VectorNd::Zero(4, 1);
+    VectorNd p_RR_base2hp_com = VectorNd::Zero(4, 1);
+    VectorNd p_RR_base2thigh_com = VectorNd::Zero(4, 1);
+    VectorNd p_RR_base2calf_com = VectorNd::Zero(4, 1);
+    VectorNd p_RR_com = VectorNd::Zero(4, 1);
+    VectorNd p_FL_base2hp_com = VectorNd::Zero(4, 1);
+    VectorNd p_FL_base2thigh_com = VectorNd::Zero(4, 1);
+    VectorNd p_FL_base2calf_com = VectorNd::Zero(4, 1);
+    VectorNd p_FL_com = VectorNd::Zero(4, 1);
+    VectorNd p_FR_base2hp_com = VectorNd::Zero(4, 1);
+    VectorNd p_FR_base2thigh_com = VectorNd::Zero(4, 1);
+    VectorNd p_FR_base2calf_com = VectorNd::Zero(4, 1);
+    VectorNd p_FR_com = VectorNd::Zero(4, 1);
+    
+    VectorNd p_robot_com_from_base = VectorNd::Zero(4, 1);
+    VectorNd p_robot_com_from_w = VectorNd::Zero(4, 1);
+    VectorNd p_robot_com = VectorNd::Zero(3, 1);
+    
+    //**************[CoM Position Parameters End]******************//
+        
+    /************************************************/
+    MatrixNd ROT_Y = MatrixNd::Zero(3, 3);
+    VectorNd tmp_foot_pos = VectorNd::Zero(3);
+    VectorNd tmp_foot_pos2 = VectorNd::Zero(3);
+        
+     //*************Gain***********************//
+    VectorNd Kp_q = VectorNd::Zero(12);
+    VectorNd Kd_q = VectorNd::Zero(12);
+    VectorNd init_Kp_q = VectorNd::Zero(12);
+    VectorNd init_Kd_q = VectorNd::Zero(12);
+    VectorNd tar_Kp_q = VectorNd::Zero(12);
+    VectorNd tar_Kd_q = VectorNd::Zero(12);
+    VectorNd tar_Kp_q_low = VectorNd::Zero(12);
+    VectorNd tar_Kd_q_low = VectorNd::Zero(12);
+    
+    VectorNd Kp_t = VectorNd::Zero(12);
+    VectorNd Kd_t = VectorNd::Zero(12);
+    VectorNd init_Kp_t = VectorNd::Zero(12);
+    VectorNd init_Kd_t = VectorNd::Zero(12);
+    VectorNd tar_Kp_t = VectorNd::Zero(12);
+    VectorNd tar_Kd_t = VectorNd::Zero(12);
+    VectorNd tar_Kp_t_low = VectorNd::Zero(12);
+    VectorNd tar_Kd_t_low = VectorNd::Zero(12);
+    
+    MatrixNd Kp_x = MatrixNd::Zero(3, 3);
+    MatrixNd Kd_x = MatrixNd::Zero(3, 3);
+    MatrixNd init_Kp_x = MatrixNd::Zero(3, 3);
+    MatrixNd init_Kd_x = MatrixNd::Zero(3, 3);
+    MatrixNd tar_Kp_x = MatrixNd::Zero(3, 3);
+    MatrixNd tar_Kd_x = MatrixNd::Zero(3, 3);
+    
+    MatrixNd Kp_w = MatrixNd::Zero(3, 3);
+    MatrixNd Kd_w = MatrixNd::Zero(3, 3);
+    MatrixNd init_Kp_w = MatrixNd::Zero(3, 3);
+    MatrixNd init_Kd_w = MatrixNd::Zero(3, 3);
+    MatrixNd tar_Kp_w = MatrixNd::Zero(3, 3);
+    MatrixNd tar_Kd_w = MatrixNd::Zero(3, 3);
+    
+     //===========Controller==========//
+    VectorNd CTC_Torque = VectorNd::Zero(18);
+    VectorNd tmp_CTC_Torque = VectorNd::Zero(18);
+    VectorNd Fc = VectorNd::Zero(18);
+    VectorNd pd_con_joint = VectorNd::Zero(18);
+    VectorNd pd_con_task = VectorNd::Zero(18);
+    // =============== [flying trot parameters Init] ================= //
+    double ts, tf;
+    int ts_cnt, tf_cnt;
+    double h_0, h_1, h_2, h_3, v_0, v_1, v_2, v_3, a_0, a_1, a_2, a_3;
+    double swing_foot_height;
+    double c_com_z1[6], c_com_z2[6], c_com_z3[6], c_com_z4[6];
+    double c_com_x1[6], c_com_x2[6], c_com_x3[6], c_com_x4[6], c_com_x5[6];
+    double c_com_y1[6], c_com_y2[6], c_com_y3[6], c_com_y4[6], c_com_y5[6];
+    double c_state_x1[6];
+    double c_sf_z1[6], c_sf_z2[6], c_sf_z3[6], c_sf_z4[6];
+    double c_sf_x1[6], c_sf_x2[6], c_sf_x3[6], c_sf_x4[6], c_sf_x5[6];
+    double c_sf_y1[6], c_sf_y2[6], c_sf_y3[6], c_sf_y4[6], c_sf_y5[6];
+    double ft_time, ft_step_time;
+    double ft_time2;
+    int ft_cnt, ft_step_cnt, ft_ready_cnt, ft_finish_cnt;
+    int ft_cnt2;
+    // =================[flying trot parameters End]==================//
+    
+
+     //===========================[ QP ]=========================//
+    // Workspace structures
+    OSQPWorkspace *QP_work;
+    OSQPSettings *QP_settings = (OSQPSettings *) c_malloc(sizeof (OSQPSettings));
+    OSQPData *QP_data = (OSQPData *) c_malloc(sizeof (OSQPData));
+
+    c_int QP_exitflag = 0;
+
+    c_int P_nnz = 78;
+    c_float P_x[78];
+    c_int P_i[78];
+    c_int P_p[13];
+    c_float q[12];
+
+    c_float A_x[12]; // = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    c_int A_nnz = 12;
+    c_int A_i[12]; // = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+    c_int A_p[13]; // = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    c_float l[12]; // = {_d_l(0), _d_l(1), _d_l(2), _d_l(3), _d_l(4), _d_l(5), _d_l(6), _d_l(7), _d_l(8), _d_l(9), _d_l(10), _d_l(11)};
+    c_float u[12]; // = {_d_u(0), _d_u(1), _d_u(2), _d_u(3), _d_u(4), _d_u(5), _d_u(6), _d_u(7), _d_u(8), _d_u(9), _d_u(10), _d_u(11)};
+    c_int n = 12;
+    c_int m = 12;
+    
+    MatrixNd S_mat = MatrixNd::Zero(18, 18);
+    VectorNd des_x_2dot = VectorNd::Zero(3);
+    VectorNd des_w_dot = VectorNd::Zero(3);
+    double _m;
+    MatrixNd _I_g = MatrixNd::Zero(3, 3);
+    MatrixNd _A = MatrixNd::Zero(6, 12);
+    MatrixNd p_com_oross_pro = MatrixNd::Zero(3, 12);
+    VectorNd _g = VectorNd::Zero(3);
+    VectorNd _b = VectorNd::Zero(6);
+    MatrixNd _C = MatrixNd::Identity(12, 12);
+    VectorNd _d_u = VectorNd::Zero(12);
+    VectorNd _d_l = VectorNd::Zero(12);
+    VectorNd _c = VectorNd::Zero(4);
+    VectorNd c_vec = VectorNd::Zero(12);
+    
+    MatrixNd _S = MatrixNd::Identity(6, 6);
+    MatrixNd _W = MatrixNd::Identity(12, 12);
+    double _alpha = 0.001; //0.000001; // 0.00001
+
+    MatrixNd _P = MatrixNd::Zero(12, 12);
+    VectorNd _q = VectorNd::Zero(12);
+
+    double fz_RL_max = 0;
+    double fz_RL_min = 0;
+    double fz_RR_max = 0;
+    double fz_RR_min = 0;
+    double fz_FL_max = 0;
+    double fz_FL_min = 0;
+    double fz_FR_max = 0;
+    double fz_FR_min = 0;
+
+    double mu = 0.7; // static friction coefficient
+    double max_Fext_z = 1000;
+    double tmp_weight;
+    
+    //*************** 5th Polynomial Param Init ************//
+    double init_x[3] = {0, 0, 0};
+    double final_x[3] = {0, 0, 0};
+    VectorNd R = VectorNd::Zero(6);
+    VectorNd P = VectorNd::Zero(6);
+    MatrixNd A = MatrixNd::Zero(6, 6);
+    //*************** 5th Polynomial Param End ************//
     
 //VectorNd tmp_actual_joint_vel_HS = VectorNd::Zero(9);
 //    VectorNd init_joint_pos_HS = VectorNd::Zero(NUM_OF_ELMO);
@@ -407,7 +704,7 @@ public:
 
     VectorNd joint_angle = VectorNd::Zero(12);
     
-     unsigned int cnt_Control_change = 0;
+    unsigned int cnt_Control_change = 0;
 
     VectorNd abs_kp_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd abs_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
@@ -433,46 +730,31 @@ public:
     VectorNd goal_kd_joint_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd goal_kp_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
     VectorNd goal_kd_EP_HS = VectorNd::Zero(NUM_OF_ELMO);
-        
-    double alpha = 0.0;
-    bool stop_flag = false;
+
+    VectorNd actual_EP_local = VectorNd::Zero(NUM_OF_ELMO);
+//    double alpha = 0.0;
+//    bool stop_flag = false;
 
     // JoyStick
-    double joy_vel_x = 0.0;
-    double joy_vel_y = 0.0;
-    double joy_vel_z = 0.0;
+//    double joy_vel_x = 0.0;
+//    double joy_vel_y = 0.0;
+//    double joy_vel_z = 0.0;
 
     //Walking Traj
-    double init_x[3] = {0, 0, 0};
-    double final_x[3] = {0, 0, 0};
-    double foot_height_HS=0.0;
-    double z_up[6];
-    double z_down[6];
-    VectorNd R = VectorNd::Zero(6);
-    VectorNd P = VectorNd::Zero(6);
-    MatrixNd A = MatrixNd::Zero(6, 6);
-    unsigned int tsp_cnt_HS=250;
-    unsigned int fsp_cnt_HS=100;
-    double tsp_time_HS=tsp_cnt_HS*dt;
-    double fsp_time_HS=fsp_cnt_HS*dt;
-    double step_time_HS=tsp_time_HS+fsp_time_HS;
-    double walk_time, t1, t2, dsp_t1, dsp_t2;
-    bool walk_stop_flag=false;
     
-      int ControlMode = 0;
-    int CommandFlag = 0;
-    int ControlMode_print = 0;
-    bool Control_mode_flag = false;
-    int JoyMode = 0;
-
-    bool Mode_Change_flag = false;
-    bool tmp_Mode_Change_flag = false;
-    unsigned int cnt_mode_change = 0;
-
-    double dt = 0.001;
-    double cycle_time_HS = 0.0;
-    unsigned int cnt_HS = 0;
-
+    //double foot_height_HS=0.0;
+//    double z_up[6];
+//    double z_down[6];
+    
+//    unsigned int tsp_cnt_HS=250;
+//    unsigned int fsp_cnt_HS=100;
+//    double tsp_time_HS=tsp_cnt_HS*dt;
+//    double fsp_time_HS=fsp_cnt_HS*dt;
+//    double step_time_HS=tsp_time_HS+fsp_time_HS;
+//    double walk_time, t1, t2, dsp_t1, dsp_t2;
+//    bool walk_stop_flag=false;
+    
+    
     
 private:
 };

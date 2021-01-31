@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(elmo_pkgs)
 
-SET (SRC_FILES 
+SET (SRC_FILES
  src/main.cpp
  src/CRobot.cpp
  include/ethercat/etc/servo.c
@@ -27,9 +27,10 @@ LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
 
 find_package(RBDL REQUIRED)
 find_package(Eigen3 3.0.0 REQUIRED)
+find_package(osqp REQUIRED)
 
 # appended to the catkin_variables(catkin_INCLUDE_DIRS contains the include paths for this lists)
-find_package(catkin REQUIRED COMPONENTS 
+find_package(catkin REQUIRED COMPONENTS
  roscpp
  std_msgs
  #soem
@@ -39,7 +40,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 catkin_package(
-  INCLUDE_DIRS include   # "include" folder 
+  INCLUDE_DIRS include   # "include" folder
 #  LIBRARIES elmo_pkgs
 #  CATKIN_DEPENDS other_catkin_pkg
 #  DEPENDS system_lib
@@ -79,8 +80,11 @@ SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 add_executable(elmo_pkgs_exe ${SRC_FILES})
 
 # To specify which libraries an executable target links against.
-target_link_libraries(elmo_pkgs_exe ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
+#target_link_libraries(elmo_pkgs_exe PRIVATE osqp::osqpstatic ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY} )
+target_link_libraries(elmo_pkgs_exe PRIVATE ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
+target_link_libraries(elmo_pkgs_exe PRIVATE osqp::osqp)
+
+
 #examples
 #add_subdirectory(examples/xenomai_test)
 #add_subdirectory(examples/soem_test)
-
