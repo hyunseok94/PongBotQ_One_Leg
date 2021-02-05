@@ -41,11 +41,6 @@ double CRobot::Count2Rad_ABS(int _Resolution, INT32 Count) {
     return th;
 }
 
-//INT32 CRobot::Count_tf(INT32 _Count_in) {
-//    INT32 _Count_out = (INT32) _Count_in;
-//    return _Count_out;
-//}
-
 INT16 CRobot::Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur) {
     INT16 inputCurrent = (OutputTorque / _Gear) / _Kt / _ratedCur * 1000;
 
@@ -80,7 +75,7 @@ void CRobot::setRobotModel(Model* getModel) {
     tar_init_FR_foot_pos << FR_base2hip_pos(0), FR_base2hip_pos(1) - 0.105 + 0.04, 0.0;
     
     com_height = 0.42; //0.42;
-//    
+  
     if (Mode == MODE_SIMULATION) {
         set_simul_para();
     } else if (Mode == MODE_ACTUAL_ROBOT) {
@@ -226,7 +221,6 @@ void CRobot::StateUpdate(void) {
 void CRobot::ComputeTorqueControl(void) {
 	// ================= Cal Jacobian ================= //
 	//	cout << "1" << endl;
-
     CalcPointJacobian6D(*m_pModel, RobotState, base.ID, Originbase, J_BASE,true);
     CalcPointJacobian(*m_pModel, RobotState, RL.ID, EP_OFFSET_RL, J_RL, true);
     CalcPointJacobian(*m_pModel, RobotState, RR.ID, EP_OFFSET_RR, J_RR, true);
@@ -245,11 +239,11 @@ void CRobot::ComputeTorqueControl(void) {
     J_RR2 = J_RR.block(0, 9, 3, 3);
     J_FL2 = J_FL.block(0, 12, 3, 3);
     J_FR2 = J_FR.block(0, 15, 3, 3);
-
+            
     act_RL_q_dot << actual_vel[0], actual_vel[1], actual_vel[2];
     act_RR_q_dot << actual_vel[3], actual_vel[4], actual_vel[5];
-    act_FL_q_dot << actual_vel[7], actual_vel[8], actual_vel[9];
-    act_FR_q_dot << actual_vel[10], actual_vel[11], actual_vel[12];
+    act_FL_q_dot << actual_vel[6], actual_vel[7], actual_vel[8];
+    act_FR_q_dot << actual_vel[9], actual_vel[10], actual_vel[11];
 
     act_RL_foot_vel = J_RL2 * act_RL_q_dot;
     act_RR_foot_vel = J_RR2 * act_RR_q_dot;
@@ -280,10 +274,10 @@ void CRobot::ComputeTorqueControl(void) {
     tar_RR_q_dot = J_RR2.inverse() * tar_RR_foot_vel_local;
     tar_FL_q_dot = J_FL2.inverse() * tar_FL_foot_vel_local;
     tar_FR_q_dot = J_FR2.inverse() * tar_FR_foot_vel_local;
-    target_vel << tar_RL_q_dot, tar_RR_q_dot, 0, tar_FL_q_dot, tar_FR_q_dot;
+    target_vel << tar_RL_q_dot, tar_RR_q_dot, tar_FL_q_dot, tar_FR_q_dot;
 
     for (unsigned int i = 0; i < nDOF; ++i) {
-        //    pd_con_task[i + 7] = Kp_t[i]*(target_EP[i] - actual_EP[i]) + Kd_t[i]*(target_EP_vel[i] - actual_EP_vel[i]); // + target_EP_offset[i];
+        //    pd_con_task[i + 6] = Kp_t[i]*(target_EP[i] - actual_EP[i]) + Kd_t[i]*(target_EP_vel[i] - actual_EP_vel[i]); // + target_EP_offset[i];
         pd_con_task[i + 6] = Kp_t[i] * (target_EP[i] - actual_EP[i]) + Kd_t[i] * (0 - actual_EP_vel[i]);
     }
 
@@ -1123,9 +1117,9 @@ VectorNd CRobot::IK1(VectorNd EP) {
     if (z < (-0.6))
         z = -0.6;
 
-    target_pos[7] = atan(y / abs(z)) - PI / 2 + acos(L1 / (sqrt(pow(y, 2) + pow(z, 2))));
-    target_pos[8] = -(-atan(x / sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
-    target_pos[9] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
+    target_pos[6] = atan(y / abs(z)) - PI / 2 + acos(L1 / (sqrt(pow(y, 2) + pow(z, 2))));
+    target_pos[7] = -(-atan(x / sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
+    target_pos[8] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
 
     tmp_foot_pos << -(EP[9] - FR_base2hip_pos(0)), EP[10] - FR_base2hip_pos(1), EP[11] - FR_base2hip_pos(2);
     tmp_foot_pos2 = ROT_Y * tmp_foot_pos;
@@ -1140,9 +1134,9 @@ VectorNd CRobot::IK1(VectorNd EP) {
     if (z < (-0.6))
         z = -0.6;
 
-    target_pos[10] = PI / 2 + atan(y / abs(z)) - acos(L1 / sqrt(pow(y, 2) + pow(z, 2))); //PI/2 - acos(L1/sqrt(pow(y,2) + pow(z,2))) - atan(abs(y)/abs(z)); //-((atan(y/abs(z)) - PI/2 + acos(L1/(sqrt(pow(y,2) + pow(z,2))))));
-    target_pos[11] = -(-atan(x / sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
-    target_pos[12] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
+    target_pos[9] = PI / 2 + atan(y / abs(z)) - acos(L1 / sqrt(pow(y, 2) + pow(z, 2))); //PI/2 - acos(L1/sqrt(pow(y,2) + pow(z,2))) - atan(abs(y)/abs(z)); //-((atan(y/abs(z)) - PI/2 + acos(L1/(sqrt(pow(y,2) + pow(z,2))))));
+    target_pos[10] = -(-atan(x / sqrt(abs(-pow(L1, 2) + pow(y, 2) + pow(z, 2)))) - acos((-pow(L1, 2) + pow(L2, 2) - pow(L3, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)) / (2 * L2 * sqrt(-pow(L1, 2) + pow(x, 2) + pow(y, 2) + pow(z, 2)))));
+    target_pos[11] = -(PI - acos((pow(L1, 2) + pow(L2, 2) + pow(L3, 2) - pow(x, 2) - pow(y, 2) - pow(z, 2)) / (2 * L2 * L3)));
 
     //    target_pos[6] = 0;
     //    cout << "tar_pos = " << target_pos.transpose()*R2D << endl;
@@ -1314,7 +1308,6 @@ void CRobot::set_simul_para(void) {
         tar_Kd_x << 0.01, 0, 0\
                    , 0, 5, 0\
                    , 0, 0, 0.1;
-        
         tar_Kp_w << 1000, 0, 0\
                 , 0, 1000, 0\
                 , 0, 0, 0;
@@ -1345,9 +1338,12 @@ void CRobot::set_simul_para(void) {
         tar_Kp_t_low << 1000, 0, 0, 1000, 0, 0, 1000, 0, 0, 1000, 0, 0;
         tar_Kd_t_low << 10, 0, 0, 10, 0, 0, 10, 0, 0, 10, 0, 0;
 
-        tar_Kp_x << 1, 0, 0, 0, 50, 0, 0, 0, 30;
-        tar_Kd_x << 0.01, 0, 0, 0, 5, 0, 0, 0, 3;
-        
+        tar_Kp_x << 1, 0, 0\
+                , 0, 50, 0\
+                , 0, 0, 30;
+        tar_Kd_x << 0.01, 0, 0\
+                , 0, 5, 0\
+                , 0, 0, 3;
         tar_Kp_w << 1000, 0, 0\
                 , 0, 1000, 0\
                 , 0, 0, 0;
@@ -1776,5 +1772,117 @@ void CRobot::QP_Con_Init(void) {
 
     // Cleanup
     // ==================== OSQP TEST END =================== //
+}
 
+void CRobot::QP_process(void) {//Get_Opt_F
+    p_com_oross_pro << 0, -tar_RL_foot_pos_local(2), tar_RL_foot_pos_local(1), 0, -tar_RR_foot_pos_local(2), tar_RR_foot_pos_local(1), 0, -tar_FL_foot_pos_local(2), tar_FL_foot_pos_local(1), 0, -tar_FR_foot_pos_local(2), tar_FR_foot_pos_local(1)\
+            , tar_RL_foot_pos_local(2), 0, -tar_RL_foot_pos_local(0), tar_RR_foot_pos_local(2), 0, -tar_RR_foot_pos_local(0), tar_FL_foot_pos_local(2), 0, -tar_FL_foot_pos_local(0), tar_FR_foot_pos_local(2), 0, -tar_FR_foot_pos_local(0)\
+            , -tar_RL_foot_pos_local(1), tar_RL_foot_pos_local(0), 0, -tar_RR_foot_pos_local(1), tar_RR_foot_pos_local(0), 0, -tar_FL_foot_pos_local(1), tar_FL_foot_pos_local(0), 0, -tar_FR_foot_pos_local(1), tar_FR_foot_pos_local(0), 0;
+
+    //    p_com_oross_pro << 0, -act_RL_foot_pos_local(2), act_RL_foot_pos_local(1), 0, -act_RR_foot_pos_local(2), act_RR_foot_pos_local(1), 0, -act_FL_foot_pos_local(2), act_FL_foot_pos_local(1), 0, -act_FR_foot_pos_local(2), act_FR_foot_pos_local(1),
+    //            act_RL_foot_pos_local(2), 0, -act_RL_foot_pos_local(0), act_RR_foot_pos_local(2), 0, -act_RR_foot_pos_local(0), act_FL_foot_pos_local(2), 0, -act_FL_foot_pos_local(0), act_FR_foot_pos_local(2), 0, -act_FR_foot_pos_local(0),
+    //            -act_RL_foot_pos_local(1), act_RL_foot_pos_local(0), 0, -act_RR_foot_pos_local(1), act_RR_foot_pos_local(0), 0, -act_FL_foot_pos_local(1), act_FL_foot_pos_local(0), 0, -act_FR_foot_pos_local(1), act_FR_foot_pos_local(0), 0;
+
+    _A.block<3, 12>(3, 0) = p_com_oross_pro;
+
+    des_x_2dot = com_acc * 1.0 + Kp_x * (com_pos - act_com_pos) + Kd_x * (com_vel - act_com_vel);
+    des_w_dot = Kp_w * (base_ori - act_base_ori) + Kd_w * (base_ori_dot - act_base_ori_dot);
+
+    _b << _m * (des_x_2dot + _g), _I_g * des_w_dot;
+
+    _P = _A.transpose() * _S * _A + _alpha * _W;
+    _q = -_A.transpose() * _S * _b;
+
+    // ===================== OSQP  ====================== //
+
+    static int jj = 0;
+    static int kk = 0;
+    static int max_jj = 0;
+
+    jj = 0;
+    kk = 0;
+    max_jj = 0;
+
+    // ===================== P_x ====================== //
+    for (unsigned int i = 0; i < P_nnz; ++i) {
+        P_x[i] = _P(jj, kk);
+        jj = jj + 1;
+
+        if (jj > max_jj) {
+            jj = 0;
+            kk = kk + 1;
+            max_jj = max_jj + 1;
+        }
+    }
+
+    for (unsigned int i = 0; i < A_nnz; ++i) {
+        q[i] = _q(i);
+    }
+
+    // ===================== Constraints ====================== //
+    if (_c(0) == 0) {
+        fz_RL_max = 0;
+        fz_RL_min = 0;
+    } else {
+        fz_RL_max = max_Fext_z;
+        fz_RL_min = 0;
+    }
+
+    if (_c(1) == 0) {
+        fz_RR_max = 0;
+        fz_RR_min = 0;
+    } else {
+        fz_RR_max = max_Fext_z;
+        fz_RR_min = 0;
+    }
+
+    if (_c(2) == 0) {
+        fz_FL_max = 0;
+        fz_FL_min = 0;
+    } else {
+        fz_FL_max = max_Fext_z;
+        fz_FL_min = 0;
+    }
+
+    if (_c(3) == 0) {
+        fz_FR_max = 0;
+        fz_FR_min = 0;
+    } else {
+        fz_FR_max = max_Fext_z;
+        fz_FR_min = 0;
+    }
+
+    _d_u << mu * abs(Fc(2 + 6)), mu * abs(Fc(2 + 6)), fz_RL_max, mu * abs(Fc(5 + 6)), mu * abs(Fc(5 + 6)), fz_RR_max, mu * abs(Fc(8 + 6)), mu * abs(Fc(8 + 6)), fz_FL_max, mu * abs(Fc(11 + 6)), mu * abs(Fc(11 + 6)), fz_FR_max;
+    _d_l << -mu * abs(Fc(2 + 6)), -mu * abs(Fc(2 + 6)), fz_RL_min, -mu * abs(Fc(5 + 6)), -mu * abs(Fc(5 + 6)), fz_RR_min, -mu * abs(Fc(8 + 6)), -mu * abs(Fc(8 + 6)), fz_FL_min, -mu * abs(Fc(11 + 6)), -mu * abs(Fc(11 + 6)), fz_FR_min;
+
+    for (unsigned int i = 0; i < A_nnz; ++i) {
+        l[i] = _d_l(i);
+        u[i] = _d_u(i);
+    }
+
+    // Update problem
+    osqp_update_P(QP_work, P_x, OSQP_NULL, 78);
+    osqp_update_lin_cost(QP_work, q);
+    osqp_update_bounds(QP_work, l, u);
+
+    // Solve updated problem
+    osqp_solve(QP_work);
+
+    for (unsigned int i = 0; i < A_nnz; ++i) {
+        Fc(i + 6) = QP_work->solution->x[i]; //fc_weight * QP_work->solution->x[i];
+    }
+
+    
+    //    ROT_Y << cos(base_ori(1)*1), 0, sin(base_ori(1)*1),
+    //            0, 1, 0,
+    //            -sin(base_ori(1)*1), 0, cos(base_ori(1)*1);
+    //
+    //    Fc2.block(7, 0, 3, 1) << ROT_Y*Fc.block(7, 0, 3, 1);
+    //    Fc2.block(10, 0, 3, 1) << ROT_Y*Fc.block(10, 0, 3, 1);
+    //    Fc2.block(13, 0, 3, 1) << ROT_Y*Fc.block(13, 0, 3, 1);
+    //    Fc2.block(16, 0, 3, 1) << ROT_Y*Fc.block(16, 0, 3, 1);
+    //
+    //
+    //cout << "Fc = " << Fc.transpose() << endl;
+    //    cout << "Fc2 = " << Fc2.transpose() << endl;
 }

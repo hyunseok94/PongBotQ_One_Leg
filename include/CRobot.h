@@ -184,7 +184,7 @@ public:
     void set_simul_para(void);
     void set_act_robot_para(void);
     void QP_Con_Init(void);
-    
+    void QP_process(void);
     VectorNd FK(VectorNd q);
     VectorNd IK(VectorNd pos);
     void ComputeTorqueControl_HS(void);
@@ -314,7 +314,7 @@ public:
     
     //***************Base Parameters **********************//
     VectorNd base_ori_quat = VectorNd::Zero(4); // roll,pitch,yaw
-//    VectorNd base_pos = VectorNd::Zero(3);
+
     VectorNd base_vel = VectorNd::Zero(3);
     VectorNd base_ori = VectorNd::Zero(3);
     VectorNd base_ori_dot = VectorNd::Zero(3);
@@ -466,6 +466,7 @@ public:
     VectorNd base_pos = VectorNd::Zero(3); // x,y,z
     VectorNd com_pos = VectorNd::Zero(3); // x,y,z
     VectorNd com_vel = VectorNd::Zero(3); // x,y,z
+    VectorNd com_acc = VectorNd::Zero(3); // x,y,z
     VectorNd pre_com_pos = VectorNd::Zero(3); // x,y,z
     VectorNd pre_com_vel = VectorNd::Zero(3);
     VectorNd init_base_pos = VectorNd::Zero(3);
@@ -753,8 +754,7 @@ public:
 //    double step_time_HS=tsp_time_HS+fsp_time_HS;
 //    double walk_time, t1, t2, dsp_t1, dsp_t2;
 //    bool walk_stop_flag=false;
-    
-    
+
     
 private:
 };
