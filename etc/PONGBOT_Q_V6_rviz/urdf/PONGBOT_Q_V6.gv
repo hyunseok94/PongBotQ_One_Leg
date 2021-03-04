@@ -1,0 +1,41 @@
+digraph G {
+node [shape=box];
+"BODY" [label="BODY"];
+"RL_HIP" [label="RL_HIP"];
+"RL_THIGH" [label="RL_THIGH"];
+"RL_CALF" [label="RL_CALF"];
+"RR_HIP" [label="RR_HIP"];
+"RR_THIGH" [label="RR_THIGH"];
+"RR_CALF" [label="RR_CALF"];
+"FL_HIP" [label="FL_HIP"];
+"FL_THIGH" [label="FL_THIGH"];
+"FL_CALF" [label="FL_CALF"];
+"FR_HIP" [label="FR_HIP"];
+"FR_THIGH" [label="FR_THIGH"];
+"FR_CALF" [label="FR_CALF"];
+node [shape=ellipse, color=blue, fontcolor=blue];
+"BODY" -> "1_RL_HR_JOINT" [label="xyz: -0.35 0.11502 0 \nrpy: 0 -0 0"]
+"1_RL_HR_JOINT" -> "RL_HIP"
+"RL_HIP" -> "RL_HP_JOINT" [label="xyz: 0 0.1049 0 \nrpy: 0 -0 0"]
+"RL_HP_JOINT" -> "RL_THIGH"
+"RL_THIGH" -> "RL_KN_JOINT" [label="xyz: 0 0 -0.305 \nrpy: 0 -0 0"]
+"RL_KN_JOINT" -> "RL_CALF"
+"BODY" -> "2_RR_HR_JOINT" [label="xyz: -0.35 -0.11502 0 \nrpy: 0 -0 0"]
+"2_RR_HR_JOINT" -> "RR_HIP"
+"RR_HIP" -> "RR_HP_JOINT" [label="xyz: 0 -0.1049 0 \nrpy: 0 -0 0"]
+"RR_HP_JOINT" -> "RR_THIGH"
+"RR_THIGH" -> "RR_KN_JOINT" [label="xyz: 0 0 -0.305 \nrpy: 0 -0 0"]
+"RR_KN_JOINT" -> "RR_CALF"
+"BODY" -> "3_FL_HR_JOINT" [label="xyz: 0.35 0.11502 0 \nrpy: 0 -0 0"]
+"3_FL_HR_JOINT" -> "FL_HIP"
+"FL_HIP" -> "FL_HP_JOINT" [label="xyz: 0 0.1049 0 \nrpy: 0 -0 0"]
+"FL_HP_JOINT" -> "FL_THIGH"
+"FL_THIGH" -> "FL_KN_JOINT" [label="xyz: 0 0 -0.305 \nrpy: 0 -0 0"]
+"FL_KN_JOINT" -> "FL_CALF"
+"BODY" -> "4_FR_HR_JOINT" [label="xyz: 0.35 -0.11502 0 \nrpy: 0 -0 0"]
+"4_FR_HR_JOINT" -> "FR_HIP"
+"FR_HIP" -> "FR_HP_JOINT" [label="xyz: 0 -0.1049 0 \nrpy: 0 -0 0"]
+"FR_HP_JOINT" -> "FR_THIGH"
+"FR_THIGH" -> "FR_KN_JOINT" [label="xyz: 0 0 -0.305 \nrpy: 0 -0 0"]
+"FR_KN_JOINT" -> "FR_CALF"
+}
