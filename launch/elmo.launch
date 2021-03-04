@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-
-<launch>
- <node pkg="elmo_pkgs" type="elmo_pkgs_exe" name="elmo_pkgs_exe" output="screen" cwd="node"/>
- <node pkg="joy" type="joy_node" name="joystick"/>
- <!--include file="$(find pongbot_one_leg_rviz)/launch/display.launch"/-->
- <!--include file="$(find PONGBOT_Q_V6_rviz)/launch/display.launch"/-->
-</launch>
-

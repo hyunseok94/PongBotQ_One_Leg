@@ -73,6 +73,7 @@
 #include <string.h>
 int fd_MIC;
 
+
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
 
@@ -145,7 +146,7 @@ unsigned long ready_cnt = 0;
 
 //// Elmo setting
 UINT16 maxTorque = 3500;
-INT16 Low_TargetTor[NUM_OF_ELMO] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+INT16 Low_TargetTor[NUM_OF_ELMO] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 //Save
 //#define SAVE_LENGTH 13    //The number of data
 #define SAVE_LENGTH 48    //The number of data
@@ -181,10 +182,10 @@ RTIME check_now_imu_time, check_previous_imu_time; // Thread 2 cycle time
 RTIME now_QP_time, previous_QP_time; // Thread 2 cycle time
 RTIME check_now_QP_time, check_previous_QP_time; // Thread 2 cycle time
 
-double check_motion_time = 0.0; 
-double motion_time = 0.0; 
-double print_time = 0.0; 
-double check_imu_time = 0.0; 
+double check_motion_time = 0.0;
+double motion_time = 0.0;
+double print_time = 0.0;
+double check_imu_time = 0.0;
 double imu_time = 0.0;
 double QP_time = 0.0;
 double check_QP_time = 0.0;
@@ -213,7 +214,7 @@ void Torque_Off(void); // : Torque Off
 void motion_run(void* arg); //  TMotor Control task
 void print_run(void* arg); //  Print task
 void imu_run(void* arg); //  Imu Task
-void QP_run(void* arg);  //  QP Task
+void QP_run(void* arg); //  QP Task
 void signal_handler(int sig); //  Catch "Ctrl + C signal"
 bool ecat_init(void);
 
@@ -231,8 +232,12 @@ void JoystickCallback(const sensor_msgs::Joy& msg);
 void ROSMsgPublish(void);
 
 int main(int argc, char* argv[]) {
+    rtser_config_t ABC;
+    ABC.baud_rate = 115200;
+
     printf(" ROS Setting ...\n");
-    ros::init(argc, argv, "elmo_pkgs");
+    //ros::init(argc, argv, "elmo_pkgs");
+    ros::init(argc, argv, "pongbot_pkgs");
     ros::NodeHandle nh;
 
     signal(SIGINT, signal_handler);
@@ -251,7 +256,7 @@ int main(int argc, char* argv[]) {
 
     printf(" Init main ...\n");
     sleep(1);
-    
+
     // Display Adapter name
     printf(" Use default adapter %s ...\n", ecat_ifname);
     sleep(1);
@@ -261,14 +266,14 @@ int main(int argc, char* argv[]) {
     printf(" Loading...\n");
     Load();
     printf("\n");
-    
+
     // Thread Setting Start
     printf("Create Thread ...\n");
     for (int i = 1; i < 4; ++i) {
         printf("%d...\n", i);
         sleep(1);
     }
-    
+
     //rt_task_create(&PongBotQ_task, "Motion_task", 0, 99, 0);
     //rt_task_create(&Print_task, "Print_task", 0, 60, 0);
     //rt_task_create(&IMU_task, "Imu_task", 0, 95, 0);
@@ -280,7 +285,7 @@ int main(int argc, char* argv[]) {
     rt_task_start(&IMU_task, &imu_run, NULL);
     //rt_task_start(&QP_task, &QP_run, NULL);
     printf("\n");
-    
+
     // Thread Setting End
     ros::Rate loop_rate(1000);
     while (ros::ok()) {
@@ -402,7 +407,7 @@ void motion_run(void* arg) {
         } else { // realtime action...           
             EncoderRead();
             GetActualData();
-            
+
             switch (PongBotQ.ControlMode) {
                 case CTRLMODE_NONE:
                     //cout << "============= [CTRLMODE_NONE] ==========" << endl;
@@ -413,7 +418,7 @@ void motion_run(void* arg) {
                 case CTRLMODE_WALK_READY:
                     cout << "============= [CTRLMODE_WALK_READY] ==========" << endl;
                     PongBotQ.wr_cnt = 0;
-                    
+
                     PongBotQ.com_pos = PongBotQ.init_com_pos;
                     PongBotQ.com_vel << 0, 0, 0;
                     PongBotQ.base_pos = PongBotQ.com_pos + PongBotQ.base_offset;
@@ -421,7 +426,7 @@ void motion_run(void* arg) {
                     PongBotQ.base_ori << 0, 0, 0;
                     PongBotQ.base_ori_dot << 0, 0, 0;
                     PongBotQ.tmp_com_pos << 0, 0, 0;
-                    
+
                     PongBotQ.CommandFlag = GOTO_WALK_READY_POS;
                     PongBotQ.ControlMode = CTRLMODE_NONE;
                     //PongBotQ.target_pos = PongBotQ.actual_pos;
@@ -429,61 +434,61 @@ void motion_run(void* arg) {
 
                 case CTRLMODE_TROT_WALKING:
                     //cout << "============= [CTRLMODE_TROT_WALKING] ==========" << endl;
-//                    if (PongBotQ.walk_ready_moving_done_flag == true) {
-//                        PongBotQ.tw_cnt = 0;
-//                        PongBotQ.CommandFlag = NOMAL_TROT_WALKING;
-//                        PongBotQ.move_cnt = 0;
-//                        PongBotQ.moving_done_flag = false;
-//                        PongBotQ.Robot_para_init();
-//                        //					PongBotQ.lpf_tar_pitch_ang = 0;
-//                    } else {
-//                        cout << " ======== not yet walk ready ======== " << endl;
-//                    }
+                    //                    if (PongBotQ.walk_ready_moving_done_flag == true) {
+                    //                        PongBotQ.tw_cnt = 0;
+                    //                        PongBotQ.CommandFlag = NOMAL_TROT_WALKING;
+                    //                        PongBotQ.move_cnt = 0;
+                    //                        PongBotQ.moving_done_flag = false;
+                    //                        PongBotQ.Robot_para_init();
+                    //                        //					PongBotQ.lpf_tar_pitch_ang = 0;
+                    //                    } else {
+                    //                        cout << " ======== not yet walk ready ======== " << endl;
+                    //                    }
                     PongBotQ.ControlMode = CTRLMODE_NONE;
                     break;
 
                 case CTRLMODE_FLYING_TROT:
                     //cout << "============= [CTRLMODE_FLYING_TROT] ==========" << endl;
-//                    if (PongBotQ.walk_ready_moving_done_flag == true) {
-//                        PongBotQ.ft_cnt = 0;
-//                        PongBotQ.CommandFlag = FLYING_TROT_RUNNING;
-//                        PongBotQ.move_cnt = 0;
-//                        PongBotQ.moving_done_flag = false;
-//                        PongBotQ.Robot_para_init();
-//                    } else {
-//                        cout << " ======== not yet walk ready ======== " << endl;
-//                    }
+                    //                    if (PongBotQ.walk_ready_moving_done_flag == true) {
+                    //                        PongBotQ.ft_cnt = 0;
+                    //                        PongBotQ.CommandFlag = FLYING_TROT_RUNNING;
+                    //                        PongBotQ.move_cnt = 0;
+                    //                        PongBotQ.moving_done_flag = false;
+                    //                        PongBotQ.Robot_para_init();
+                    //                    } else {
+                    //                        cout << " ======== not yet walk ready ======== " << endl;
+                    //                    }
                     PongBotQ.ControlMode = CTRLMODE_NONE;
                     break;
 
                 case CTRLMODE_PRONK_JUMP:
                     //cout << "============= [CTRLMODE_PRONK_JUMP] ==========" << endl;
-//                    if (PongBotQ.walk_ready_moving_done_flag == true) {
-//                        PongBotQ.pr_cnt = 0;
-//                        PongBotQ.JUMP_PHASE = 0;
-//                        PongBotQ.jump_num = 0;
-//                        PongBotQ.move_cnt = 0;
-//                        PongBotQ.moving_done_flag = false;
-//                        PongBotQ.Robot_para_init();
-//                        //
-//                        PongBotQ.CommandFlag = PRONK_JUMP;
-//                    } else {
-//                        cout << " ======== not yet walk ready ======== " << endl;
-//                    }
+                    //                    if (PongBotQ.walk_ready_moving_done_flag == true) {
+                    //                        PongBotQ.pr_cnt = 0;
+                    //                        PongBotQ.JUMP_PHASE = 0;
+                    //                        PongBotQ.jump_num = 0;
+                    //                        PongBotQ.move_cnt = 0;
+                    //                        PongBotQ.moving_done_flag = false;
+                    //                        PongBotQ.Robot_para_init();
+                    //                        //
+                    //                        PongBotQ.CommandFlag = PRONK_JUMP;
+                    //                    } else {
+                    //                        cout << " ======== not yet walk ready ======== " << endl;
+                    //                    }
                     PongBotQ.ControlMode = CTRLMODE_NONE;
                     break;
 
                 case CTRLMODE_TEST:
-//                    cout << "============= [CTRLMODE_TEST] ==========" << endl;
-//                    if (PongBotQ.walk_ready_moving_done_flag == true) {
-//                        PongBotQ.test_cnt = 0;
-//                        PongBotQ.CommandFlag = TEST_FLAG;
-//                        PongBotQ.move_cnt = 0;
-//                        PongBotQ.moving_done_flag = false;
-//                        PongBotQ.Robot_para_init();
-//                    } else {
-//                        cout << " ======== not yet walk ready ======== " << endl;
-//                    }
+                    //                    cout << "============= [CTRLMODE_TEST] ==========" << endl;
+                    //                    if (PongBotQ.walk_ready_moving_done_flag == true) {
+                    //                        PongBotQ.test_cnt = 0;
+                    //                        PongBotQ.CommandFlag = TEST_FLAG;
+                    //                        PongBotQ.move_cnt = 0;
+                    //                        PongBotQ.moving_done_flag = false;
+                    //                        PongBotQ.Robot_para_init();
+                    //                    } else {
+                    //                        cout << " ======== not yet walk ready ======== " << endl;
+                    //                    }
                     PongBotQ.ControlMode = CTRLMODE_NONE;
                     break;
 
@@ -495,43 +500,43 @@ void motion_run(void* arg) {
 
                 case CTRLMODE_STAIR:
                     //cout << "============= [CTRLMODE_STAIR] ==========" << endl;
-//                    if (PongBotQ.walk_ready_moving_done_flag == true) {
-//                        PongBotQ.tw_cnt = 0;
-//                        PongBotQ.CommandFlag = STAIR_WALKING;
-//                        PongBotQ.move_cnt = 0;
-//                        PongBotQ.moving_done_flag = false;
-//                        PongBotQ.Robot_para_init();
-//                    } else {
-//                        cout << " ======== not yet walk ready ======== " << endl;
-//                    }
+                    //                    if (PongBotQ.walk_ready_moving_done_flag == true) {
+                    //                        PongBotQ.tw_cnt = 0;
+                    //                        PongBotQ.CommandFlag = STAIR_WALKING;
+                    //                        PongBotQ.move_cnt = 0;
+                    //                        PongBotQ.moving_done_flag = false;
+                    //                        PongBotQ.Robot_para_init();
+                    //                    } else {
+                    //                        cout << " ======== not yet walk ready ======== " << endl;
+                    //                    }
                     PongBotQ.ControlMode = CTRLMODE_NONE;
                     break;
                 case CTRLMODE_SLOW_WALK_HS:
                     //cout << "============= [CTRLMODE_Walk] ==========" << endl;
                     //PongBotQ.cnt_HS = 0;
-//                    PongBotQ.now_vel_HS << 0.0, 0.0, 0.0;
-//                    PongBotQ.tar_vel_HS << 0.0, 0.0, 0.0;
-//                    PongBotQ.zmp_ref_x_array_HS = VectorNd::Zero(
-//                            PongBotQ.preview_cnt_HS);
-//                    PongBotQ.zmp_ref_y_array_HS = VectorNd::Zero(
-//                            PongBotQ.preview_cnt_HS);
-//
-//                    PongBotQ.X_new_x_HS << 0.0, 0.0, 0.0;
-//                    PongBotQ.X_new_y_HS << 0.0, 0.0, 0.0;
-//
-//                    PongBotQ.sum_e_x_HS = 0.0;
-//                    PongBotQ.sum_e_y_HS = 0.0;
-//
-//                    PongBotQ.WalkReady_flag_HS = true;
-//                    PongBotQ.move_stop_flag = false;
-//                    PongBotQ.walk_stop_flag_HS = false;
-//                    PongBotQ.com_stop_flag_HS = false;
-//                    PongBotQ.foot_height_HS = PongBotQ.tmp_foot_height_HS;
-//                    PongBotQ.init_Force_flag_HS = true;
-//
-//                    PongBotQ.target_base_ori_local_HS = VectorNd::Zero(3);
-//
-//                    PongBotQ.Contact_Info_HS << 1, 1, 1, 1;
+                    //                    PongBotQ.now_vel_HS << 0.0, 0.0, 0.0;
+                    //                    PongBotQ.tar_vel_HS << 0.0, 0.0, 0.0;
+                    //                    PongBotQ.zmp_ref_x_array_HS = VectorNd::Zero(
+                    //                            PongBotQ.preview_cnt_HS);
+                    //                    PongBotQ.zmp_ref_y_array_HS = VectorNd::Zero(
+                    //                            PongBotQ.preview_cnt_HS);
+                    //
+                    //                    PongBotQ.X_new_x_HS << 0.0, 0.0, 0.0;
+                    //                    PongBotQ.X_new_y_HS << 0.0, 0.0, 0.0;
+                    //
+                    //                    PongBotQ.sum_e_x_HS = 0.0;
+                    //                    PongBotQ.sum_e_y_HS = 0.0;
+                    //
+                    //                    PongBotQ.WalkReady_flag_HS = true;
+                    //                    PongBotQ.move_stop_flag = false;
+                    //                    PongBotQ.walk_stop_flag_HS = false;
+                    //                    PongBotQ.com_stop_flag_HS = false;
+                    //                    PongBotQ.foot_height_HS = PongBotQ.tmp_foot_height_HS;
+                    //                    PongBotQ.init_Force_flag_HS = true;
+                    //
+                    //                    PongBotQ.target_base_ori_local_HS = VectorNd::Zero(3);
+                    //
+                    //                    PongBotQ.Contact_Info_HS << 1, 1, 1, 1;
                     PongBotQ.CommandFlag = GOTO_SLOW_WALK_POS_HS;
                     PongBotQ.ControlMode = CTRLMODE_NONE;
                     break;
@@ -578,59 +583,59 @@ void motion_run(void* arg) {
                     //printf("===========================================\n");
                     //dh_save();
                     PongBotQ.StateUpdate();
-//                    if (PongBotQ.move_cnt == 0) {
-//
-//                        if (PongBotQ.Mode == MODE_SIMULATION) {
-//                            PongBotQ.set_simul_para();
-//                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
-//                            PongBotQ.set_act_robot_para();
-//                        }
-//
-//                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
-//                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
-//                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
-//                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
-//                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
-//                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
-//                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
-//                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else if (PongBotQ.move_cnt < 1000) {
-//                        PongBotQ.tmp_weight = 1 / 2.0
-//                                * (1
-//                                - cos(
-//                                PI2 / (2) * (double) (PongBotQ.move_cnt)
-//                                * PongBotQ.dt));
-//                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
-//                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
-//                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
-//                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
-//                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
-//                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
-//                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
-//                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
-//                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
-//                                * PongBotQ.tmp_weight;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else {
-//                        PongBotQ.Trot_Walking4();
-//                    }
+                    //                    if (PongBotQ.move_cnt == 0) {
+                    //
+                    //                        if (PongBotQ.Mode == MODE_SIMULATION) {
+                    //                            PongBotQ.set_simul_para();
+                    //                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
+                    //                            PongBotQ.set_act_robot_para();
+                    //                        }
+                    //
+                    //                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
+                    //                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
+                    //                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
+                    //                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
+                    //                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
+                    //                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
+                    //                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
+                    //                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else if (PongBotQ.move_cnt < 1000) {
+                    //                        PongBotQ.tmp_weight = 1 / 2.0
+                    //                                * (1
+                    //                                - cos(
+                    //                                PI2 / (2) * (double) (PongBotQ.move_cnt)
+                    //                                * PongBotQ.dt));
+                    //                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
+                    //                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
+                    //                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
+                    //                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
+                    //                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
+                    //                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
+                    //                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
+                    //                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
+                    //                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else {
+                    //                        PongBotQ.Trot_Walking4();
+                    //                    }
 
                     //PongBotQ.ComputeTorqueControl();
                     break;
@@ -640,59 +645,59 @@ void motion_run(void* arg) {
                     //dh_save();
                     PongBotQ.StateUpdate();
 
-//                    if (PongBotQ.move_cnt == 0) {
-//
-//                        if (PongBotQ.Mode == MODE_SIMULATION) {
-//                            PongBotQ.set_simul_para();
-//                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
-//                            PongBotQ.set_act_robot_para();
-//                        }
-//
-//                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
-//                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
-//                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
-//                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
-//                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
-//                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
-//                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
-//                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else if (PongBotQ.move_cnt < 1000) {
-//                        PongBotQ.tmp_weight = 1 / 2.0
-//                                * (1
-//                                - cos(
-//                                PI2 / (2) * (double) (PongBotQ.move_cnt)
-//                                * PongBotQ.dt));
-//                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
-//                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
-//                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
-//                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
-//                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
-//                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
-//                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
-//                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
-//                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
-//                                * PongBotQ.tmp_weight;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else {
-//                        PongBotQ.Flying_Trot_Running3();
-//                    }
+                    //                    if (PongBotQ.move_cnt == 0) {
+                    //
+                    //                        if (PongBotQ.Mode == MODE_SIMULATION) {
+                    //                            PongBotQ.set_simul_para();
+                    //                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
+                    //                            PongBotQ.set_act_robot_para();
+                    //                        }
+                    //
+                    //                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
+                    //                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
+                    //                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
+                    //                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
+                    //                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
+                    //                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
+                    //                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
+                    //                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else if (PongBotQ.move_cnt < 1000) {
+                    //                        PongBotQ.tmp_weight = 1 / 2.0
+                    //                                * (1
+                    //                                - cos(
+                    //                                PI2 / (2) * (double) (PongBotQ.move_cnt)
+                    //                                * PongBotQ.dt));
+                    //                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
+                    //                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
+                    //                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
+                    //                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
+                    //                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
+                    //                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
+                    //                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
+                    //                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
+                    //                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else {
+                    //                        PongBotQ.Flying_Trot_Running3();
+                    //                    }
 
                     //PongBotQ.ComputeTorqueControl();
 
@@ -700,59 +705,59 @@ void motion_run(void* arg) {
 
                 case PRONK_JUMP:
                     PongBotQ.StateUpdate();
-//                    if (PongBotQ.move_cnt == 0) {
-//
-//                        if (PongBotQ.Mode == MODE_SIMULATION) {
-//                            PongBotQ.set_simul_para();
-//                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
-//                            PongBotQ.set_act_robot_para();
-//                        }
-//
-//                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
-//                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
-//                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
-//                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
-//                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
-//                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
-//                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
-//                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else if (PongBotQ.move_cnt < 1000) {
-//                        PongBotQ.tmp_weight = 1 / 2.0
-//                                * (1
-//                                - cos(
-//                                PI2 / (2) * (double) (PongBotQ.move_cnt)
-//                                * PongBotQ.dt));
-//                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
-//                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
-//                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
-//                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
-//                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
-//                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
-//                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
-//                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
-//                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
-//                                * PongBotQ.tmp_weight;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else {
-//                        PongBotQ.Pronk_Jump();
-//                    }
+                    //                    if (PongBotQ.move_cnt == 0) {
+                    //
+                    //                        if (PongBotQ.Mode == MODE_SIMULATION) {
+                    //                            PongBotQ.set_simul_para();
+                    //                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
+                    //                            PongBotQ.set_act_robot_para();
+                    //                        }
+                    //
+                    //                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
+                    //                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
+                    //                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
+                    //                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
+                    //                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
+                    //                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
+                    //                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
+                    //                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else if (PongBotQ.move_cnt < 1000) {
+                    //                        PongBotQ.tmp_weight = 1 / 2.0
+                    //                                * (1
+                    //                                - cos(
+                    //                                PI2 / (2) * (double) (PongBotQ.move_cnt)
+                    //                                * PongBotQ.dt));
+                    //                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
+                    //                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
+                    //                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
+                    //                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
+                    //                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
+                    //                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
+                    //                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
+                    //                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
+                    //                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else {
+                    //                        PongBotQ.Pronk_Jump();
+                    //                    }
                     //PongBotQ.ComputeTorqueControl();
 
                     break;
@@ -760,59 +765,59 @@ void motion_run(void* arg) {
                 case TEST_FLAG:
                     //        printf("===========================================\n");
                     PongBotQ.StateUpdate();
-//                    if (PongBotQ.move_cnt == 0) {
-//
-//                        if (PongBotQ.Mode == MODE_SIMULATION) {
-//                            PongBotQ.set_simul_para();
-//                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
-//                            PongBotQ.set_act_robot_para();
-//                        }
-//
-//                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
-//                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
-//                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
-//                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
-//                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
-//                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
-//                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
-//                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else if (PongBotQ.move_cnt < 1000) {
-//                        PongBotQ.tmp_weight = 1 / 2.0
-//                                * (1
-//                                - cos(
-//                                PI2 / (2) * (double) (PongBotQ.move_cnt)
-//                                * PongBotQ.dt));
-//                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
-//                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
-//                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
-//                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
-//                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
-//                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
-//                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
-//                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
-//                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
-//                                * PongBotQ.tmp_weight;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else {
-//                        PongBotQ.Test_Function();
-//                    }
+                    //                    if (PongBotQ.move_cnt == 0) {
+                    //
+                    //                        if (PongBotQ.Mode == MODE_SIMULATION) {
+                    //                            PongBotQ.set_simul_para();
+                    //                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
+                    //                            PongBotQ.set_act_robot_para();
+                    //                        }
+                    //
+                    //                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
+                    //                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
+                    //                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
+                    //                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
+                    //                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
+                    //                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
+                    //                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
+                    //                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else if (PongBotQ.move_cnt < 1000) {
+                    //                        PongBotQ.tmp_weight = 1 / 2.0
+                    //                                * (1
+                    //                                - cos(
+                    //                                PI2 / (2) * (double) (PongBotQ.move_cnt)
+                    //                                * PongBotQ.dt));
+                    //                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
+                    //                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
+                    //                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
+                    //                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
+                    //                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
+                    //                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
+                    //                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
+                    //                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
+                    //                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else {
+                    //                        PongBotQ.Test_Function();
+                    //                    }
                     //PongBotQ.Test_Function();
                     //PongBotQ.ComputeTorqueControl();
                     break;
@@ -821,74 +826,74 @@ void motion_run(void* arg) {
                     //        printf("===========================================\n");
                     //dh_save();
                     PongBotQ.StateUpdate();
-//                    if (PongBotQ.move_cnt == 0) {
-//
-//                        if (PongBotQ.Mode == MODE_SIMULATION) {
-//                            PongBotQ.set_simul_para();
-//                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
-//                            PongBotQ.set_act_robot_para();
-//                        }
-//
-//                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
-//                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
-//                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
-//                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
-//                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
-//                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
-//                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
-//                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else if (PongBotQ.move_cnt < 1000) {
-//                        PongBotQ.tmp_weight = 1 / 2.0
-//                                * (1
-//                                - cos(
-//                                PI2 / (2) * (double) (PongBotQ.move_cnt)
-//                                * PongBotQ.dt));
-//                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
-//                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
-//                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
-//                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
-//                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
-//                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
-//                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
-//                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
-//                                * PongBotQ.tmp_weight;
-//                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
-//                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
-//                                * PongBotQ.tmp_weight;
-//
-//                        PongBotQ.move_cnt++;
-//                    } else {
-//                        PongBotQ.Stair_Walking();
-//                    }
+                    //                    if (PongBotQ.move_cnt == 0) {
+                    //
+                    //                        if (PongBotQ.Mode == MODE_SIMULATION) {
+                    //                            PongBotQ.set_simul_para();
+                    //                        } else if (PongBotQ.Mode == MODE_ACTUAL_ROBOT) {
+                    //                            PongBotQ.set_act_robot_para();
+                    //                        }
+                    //
+                    //                        PongBotQ.init_Kp_q = PongBotQ.Kp_q;
+                    //                        PongBotQ.init_Kd_q = PongBotQ.Kd_q;
+                    //                        PongBotQ.init_Kp_t = PongBotQ.Kp_t;
+                    //                        PongBotQ.init_Kd_t = PongBotQ.Kd_t;
+                    //                        PongBotQ.init_Kp_x = PongBotQ.Kp_x;
+                    //                        PongBotQ.init_Kd_x = PongBotQ.Kd_x;
+                    //                        PongBotQ.init_Kp_w = PongBotQ.Kp_w;
+                    //                        PongBotQ.init_Kd_w = PongBotQ.Kd_w;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else if (PongBotQ.move_cnt < 1000) {
+                    //                        PongBotQ.tmp_weight = 1 / 2.0
+                    //                                * (1
+                    //                                - cos(
+                    //                                PI2 / (2) * (double) (PongBotQ.move_cnt)
+                    //                                * PongBotQ.dt));
+                    //                        PongBotQ.Kp_q = PongBotQ.init_Kp_q
+                    //                                + (PongBotQ.tar_Kp_q_low - PongBotQ.init_Kp_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_q = PongBotQ.init_Kd_q
+                    //                                + (PongBotQ.tar_Kd_q_low - PongBotQ.init_Kd_q)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_t = PongBotQ.init_Kp_t
+                    //                                + (PongBotQ.tar_Kp_t_low - PongBotQ.init_Kp_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_t = PongBotQ.init_Kd_t
+                    //                                + (PongBotQ.tar_Kd_t_low - PongBotQ.init_Kd_t)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_x = PongBotQ.init_Kp_x
+                    //                                + (PongBotQ.tar_Kp_x - PongBotQ.init_Kp_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_x = PongBotQ.init_Kd_x
+                    //                                + (PongBotQ.tar_Kd_x - PongBotQ.init_Kd_x)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kp_w = PongBotQ.init_Kp_w
+                    //                                + (PongBotQ.tar_Kp_w - PongBotQ.init_Kp_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //                        PongBotQ.Kd_w = PongBotQ.init_Kd_w
+                    //                                + (PongBotQ.tar_Kd_w - PongBotQ.init_Kd_w)
+                    //                                * PongBotQ.tmp_weight;
+                    //
+                    //                        PongBotQ.move_cnt++;
+                    //                    } else {
+                    //                        PongBotQ.Stair_Walking();
+                    //                    }
                     //PongBotQ.ComputeTorqueControl();
                     break;
 
                 case GOTO_SLOW_WALK_POS_HS:
                     PongBotQ.StateUpdate();
-//                    PongBotQ.Global_Transform_Z_HS();
-//                    PongBotQ.Slope_Controller3();
-//
-//                    if (PongBotQ.WalkReady_flag_HS == true) {
-//                        PongBotQ.WalkReady_Pos_Traj_HS();
-//                    } else {
-//                        dh_save();
-//                        PongBotQ.Walking_Gait_Traj_HS();
-//                    }
-                   // PongBotQ.ComputeTorqueControl_HS();
+                    //                    PongBotQ.Global_Transform_Z_HS();
+                    //                    PongBotQ.Slope_Controller3();
+                    //
+                    //                    if (PongBotQ.WalkReady_flag_HS == true) {
+                    //                        PongBotQ.WalkReady_Pos_Traj_HS();
+                    //                    } else {
+                    //                        dh_save();
+                    //                        PongBotQ.Walking_Gait_Traj_HS();
+                    //                    }
+                    // PongBotQ.ComputeTorqueControl_HS();
                     break;
             }
             TargetTor_Gen();
@@ -958,45 +963,45 @@ void print_run(void* arg) {
                     rt_printf("%i\n", stick / 10);
                 stick++;
             } else {
-//                rt_printf("=============================[Thread Time]=================================\n");
-//                rt_printf("Thread_time : (%f [ms] / %f [ms]) / (%f [ms]) / (%f [ms] / %f [ms]) / (%f [ms] / %f [ms])\n", check_motion_time, motion_time, print_time, check_imu_time, imu_time, check_QP_time, QP_time);
-//                rt_printf("Motion Time(Max) : %f [ms] / IMU Time(Max) : %f [ms]\n", motion_time_set(0), IMU_time_set(0));
-//                rt_printf("=============================[Elmo Status]=================================\n");
-//                //                //rt_printf("Status word = (0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X) \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord, ELMO_drive_pt[5].ptInParam->StatusWord, ELMO_drive_pt[4].ptInParam->StatusWord, ELMO_drive_pt[3].ptInParam->StatusWord, ELMO_drive_pt[6].ptInParam->StatusWord, ELMO_drive_pt[7].ptInParam->StatusWord, ELMO_drive_pt[8].ptInParam->StatusWord, ELMO_drive_pt[11].ptInParam->StatusWord, ELMO_drive_pt[10].ptInParam->StatusWord, ELMO_drive_pt[9].ptInParam->StatusWord);
-//                //                //rt_printf("Actual Torque = (%d / %d / %d),(%d / %d / %d),(%d / %d / %d),(%d / %d / %d)\n", ELMO_drive_pt[0].ptInParam->TorqueActualValue, ELMO_drive_pt[1].ptInParam->TorqueActualValue, ELMO_drive_pt[2].ptInParam->TorqueActualValue, ELMO_drive_pt[5].ptInParam->TorqueActualValue, ELMO_drive_pt[4].ptInParam->TorqueActualValue, ELMO_drive_pt[3].ptInParam->TorqueActualValue, ELMO_drive_pt[6].ptInParam->TorqueActualValue, ELMO_drive_pt[7].ptInParam->TorqueActualValue, ELMO_drive_pt[8].ptInParam->TorqueActualValue, ELMO_drive_pt[11].ptInParam->TorqueActualValue, ELMO_drive_pt[10].ptInParam->TorqueActualValue, ELMO_drive_pt[9].ptInParam->TorqueActualValue);
-//                //                rt_printf("=============================[Sensor]=================================\n");
-//                //                rt_printf("Base_acc(m/s^2) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.IMUAccX, PongBotQ.IMUAccY, PongBotQ.IMUAccZ, x_acc_set(0), y_acc_set(0), z_acc_set(0));
-//                rt_printf("Base_ori(degree) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f) \n", PongBotQ.IMURoll*R2D, PongBotQ.IMUPitch*R2D, PongBotQ.IMUYaw * R2D, roll_set(0) * R2D, pitch_set(0) * R2D, yaw_set(0) * R2D);
+                //                rt_printf("=============================[Thread Time]=================================\n");
+                //                rt_printf("Thread_time : (%f [ms] / %f [ms]) / (%f [ms]) / (%f [ms] / %f [ms]) / (%f [ms] / %f [ms])\n", check_motion_time, motion_time, print_time, check_imu_time, imu_time, check_QP_time, QP_time);
+                //                rt_printf("Motion Time(Max) : %f [ms] / IMU Time(Max) : %f [ms]\n", motion_time_set(0), IMU_time_set(0));
+                //                rt_printf("=============================[Elmo Status]=================================\n");
+                //                //                //rt_printf("Status word = (0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X) \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord, ELMO_drive_pt[5].ptInParam->StatusWord, ELMO_drive_pt[4].ptInParam->StatusWord, ELMO_drive_pt[3].ptInParam->StatusWord, ELMO_drive_pt[6].ptInParam->StatusWord, ELMO_drive_pt[7].ptInParam->StatusWord, ELMO_drive_pt[8].ptInParam->StatusWord, ELMO_drive_pt[11].ptInParam->StatusWord, ELMO_drive_pt[10].ptInParam->StatusWord, ELMO_drive_pt[9].ptInParam->StatusWord);
+                //                //                //rt_printf("Actual Torque = (%d / %d / %d),(%d / %d / %d),(%d / %d / %d),(%d / %d / %d)\n", ELMO_drive_pt[0].ptInParam->TorqueActualValue, ELMO_drive_pt[1].ptInParam->TorqueActualValue, ELMO_drive_pt[2].ptInParam->TorqueActualValue, ELMO_drive_pt[5].ptInParam->TorqueActualValue, ELMO_drive_pt[4].ptInParam->TorqueActualValue, ELMO_drive_pt[3].ptInParam->TorqueActualValue, ELMO_drive_pt[6].ptInParam->TorqueActualValue, ELMO_drive_pt[7].ptInParam->TorqueActualValue, ELMO_drive_pt[8].ptInParam->TorqueActualValue, ELMO_drive_pt[11].ptInParam->TorqueActualValue, ELMO_drive_pt[10].ptInParam->TorqueActualValue, ELMO_drive_pt[9].ptInParam->TorqueActualValue);
+                //                //                rt_printf("=============================[Sensor]=================================\n");
+                //                //                rt_printf("Base_acc(m/s^2) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.IMUAccX, PongBotQ.IMUAccY, PongBotQ.IMUAccZ, x_acc_set(0), y_acc_set(0), z_acc_set(0));
+                //                rt_printf("Base_ori(degree) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f) \n", PongBotQ.IMURoll*R2D, PongBotQ.IMUPitch*R2D, PongBotQ.IMUYaw * R2D, roll_set(0) * R2D, pitch_set(0) * R2D, yaw_set(0) * R2D);
                 //                rt_printf("Base_ori_vel(rad/s) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.IMURoll_dot, PongBotQ.IMUPitch_dot, PongBotQ.IMUYaw_dot, roll_vel_set(0), pitch_vel_set(0), yaw_vel_set(0));
                 //                rt_printf("actual_q(degree) = ( %3f / %3f/ %3f ), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_pos[0] * R2D, PongBotQ.actual_pos[1] * R2D, PongBotQ.actual_pos[2] * R2D, PongBotQ.actual_pos[3] * R2D, PongBotQ.actual_pos[4] * R2D, PongBotQ.actual_pos[5] * R2D, PongBotQ.actual_pos[6] * R2D, PongBotQ.actual_pos[7] * R2D, PongBotQ.actual_pos[8] * R2D, PongBotQ.actual_pos[9] * R2D, PongBotQ.actual_pos[10] * R2D, PongBotQ.actual_pos[11] * R2D);
                 //                rt_printf("actual_joint_vel(rad/s) = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_vel[0], PongBotQ.actual_vel[1], PongBotQ.actual_vel[2], PongBotQ.actual_vel[3], PongBotQ.actual_vel[4], PongBotQ.actual_vel[5], PongBotQ.actual_vel[6], PongBotQ.actual_vel[7], PongBotQ.actual_vel[8], PongBotQ.actual_vel[9], PongBotQ.actual_vel[10], PongBotQ.actual_vel[11]);
                 //                rt_printf("=============================[Kinematics]=================================\n");
                 //rt_printf("actual_EP_pos_local = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_EP_local[0], PongBotQ.actual_EP_local[1], PongBotQ.actual_EP_local[2], PongBotQ.actual_EP_local[3], PongBotQ.actual_EP_local[4], PongBotQ.actual_EP_local[5], PongBotQ.actual_EP_local[6], PongBotQ.actual_EP_local[7], PongBotQ.actual_EP_local[8], PongBotQ.actual_EP_local[9], PongBotQ.actual_EP_local[10], PongBotQ.actual_EP_local[11]);
-//                rt_printf("--> com_pos= ( %3f / %3f/ %3f ) \n", PongBotQ.com_pos(0), PongBotQ.com_pos(1), PongBotQ.com_pos(2));
-//                rt_printf("--> com_vel= ( %3f / %3f/ %3f ) \n", PongBotQ.com_vel(0), PongBotQ.com_vel(1), PongBotQ.com_vel(2));
-//                rt_printf("--> target foot pos= ( %3f / %3f/ %3f ) / ( %3f / %3f/ %3f ) /( %3f / %3f/ %3f ) / ( %3f / %3f/ %3f ) \n", PongBotQ.RL_foot_pos(0), PongBotQ.RL_foot_pos(1), PongBotQ.RL_foot_pos(2), PongBotQ.RR_foot_pos(0), PongBotQ.RR_foot_pos(1), PongBotQ.RR_foot_pos(2), PongBotQ.FL_foot_pos(0), PongBotQ.FL_foot_pos(1), PongBotQ.FL_foot_pos(2), PongBotQ.FR_foot_pos(0), PongBotQ.FR_foot_pos(1), PongBotQ.FR_foot_pos(2));
-//                rt_printf("--> target foot vel= ( %3f / %3f/ %3f ) / ( %3f / %3f/ %3f ) /( %3f / %3f/ %3f ) / ( %3f / %3f/ %3f ) \n", PongBotQ.RL_foot_vel(0), PongBotQ.RL_foot_vel(1), PongBotQ.RL_foot_vel(2), PongBotQ.RR_foot_vel(0), PongBotQ.RR_foot_vel(1), PongBotQ.RR_foot_vel(2), PongBotQ.FL_foot_vel(0), PongBotQ.FL_foot_vel(1), PongBotQ.FL_foot_vel(2), PongBotQ.FR_foot_vel(0), PongBotQ.FR_foot_vel(1), PongBotQ.FR_foot_vel(2));
-//                rt_printf("--> Force = ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) \n", PongBotQ.Fc(6), PongBotQ.Fc(7), PongBotQ.Fc(8), PongBotQ.Fc(9), PongBotQ.Fc(10), PongBotQ.Fc(11), PongBotQ.Fc(12), PongBotQ.Fc(13), PongBotQ.Fc(14), PongBotQ.Fc(15), PongBotQ.Fc(16), PongBotQ.Fc(17));
-//                rt_printf("--> C_Force = ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) \n", PongBotQ.C_term(6), PongBotQ.C_term(7), PongBotQ.C_term(8), PongBotQ.C_term(9), PongBotQ.C_term(10), PongBotQ.C_term(11), PongBotQ.C_term(12), PongBotQ.C_term(13), PongBotQ.C_term(14), PongBotQ.C_term(15), PongBotQ.C_term(16), PongBotQ.C_term(17));
-//                rt_printf("--> G_Force = ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) \n", PongBotQ.G_term(6), PongBotQ.G_term(7), PongBotQ.G_term(8), PongBotQ.G_term(9), PongBotQ.G_term(10), PongBotQ.G_term(11), PongBotQ.G_term(12), PongBotQ.G_term(13), PongBotQ.G_term(14), PongBotQ.G_term(15), PongBotQ.G_term(16), PongBotQ.G_term(17));
-                  
-//                rt_printf("--> RL(L)= ( %3f / %3f/ %3f ) \n", PongBotQ.act_RL_foot_pos_local(0), PongBotQ.act_RL_foot_pos_local(1), PongBotQ.act_RL_foot_pos_local(2));
-//                rt_printf("--> RR(L)= ( %3f / %3f/ %3f ) \n", PongBotQ.act_RR_foot_pos_local(0), PongBotQ.act_RR_foot_pos_local(1), PongBotQ.act_RR_foot_pos_local(2));
-//                rt_printf("--> FL(L)= ( %3f / %3f/ %3f ) \n", PongBotQ.act_FL_foot_pos_local(0), PongBotQ.act_FL_foot_pos_local(1), PongBotQ.act_FL_foot_pos_local(2));
-//                rt_printf("--> FR(L)= ( %3f / %3f/ %3f ) \n", PongBotQ.act_FR_foot_pos_local(0), PongBotQ.act_FR_foot_pos_local(1), PongBotQ.act_FR_foot_pos_local(2));
-//                rt_printf("=============================[Joint's values]=================================\n");
-//                rt_printf("Gravity = (%3f / %3f / %3f),(%3f / %3f / %3f),(%3f / %3f / %3f),(%3f / %3f / %3f) \n", PongBotQ.G_term[6], PongBotQ.G_term[7], PongBotQ.G_term[8], PongBotQ.G_term[9], PongBotQ.G_term[10], PongBotQ.G_term[11], PongBotQ.G_term[12], PongBotQ.G_term[13], PongBotQ.G_term[14], PongBotQ.G_term[15], PongBotQ.G_term[16], PongBotQ.G_term[17]);
-//                rt_printf("Coriolis = (%3f / %3f / %3f),(%3f / %3f / %3f),(%3f / %3f / %3f),(%3f / %3f / %3f) \n", PongBotQ.C_term[6], PongBotQ.C_term[7], PongBotQ.C_term[8], PongBotQ.C_term[9], PongBotQ.C_term[10], PongBotQ.C_term[11], PongBotQ.C_term[12], PongBotQ.C_term[13], PongBotQ.C_term[14], PongBotQ.C_term[15], PongBotQ.C_term[16], PongBotQ.C_term[17]);
-//                rt_printf("TargetTorque = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.joint[0].torque, PongBotQ.joint[1].torque, PongBotQ.joint[2].torque, PongBotQ.joint[3].torque, PongBotQ.joint[4].torque, PongBotQ.joint[5].torque, PongBotQ.joint[6].torque, PongBotQ.joint[7].torque, PongBotQ.joint[8].torque, PongBotQ.joint[9].torque, PongBotQ.joint[10].torque, PongBotQ.joint[11].torque);
-////                
-//                ////                rt_printf("_________________________________________\n");
-//                ////                rt_printf("Joint_P_gain = %3f / %3f / %3f \n", PongBotQ.kp_joint_HS[0], PongBotQ.kp_joint_HS[1], PongBotQ.kp_joint_HS[2]);
-//                ////                rt_printf("Joint_D_gain = %3f / %3f / %3f \n", PongBotQ.kd_joint_HS[0], PongBotQ.kd_joint_HS[1], PongBotQ.kd_joint_HS[2]);
-//                ////                rt_printf("Cart_P_gain = %3f / %3f / %3f \n", PongBotQ.kp_EP_HS[0], PongBotQ.kp_EP_HS[1], PongBotQ.kp_EP_HS[2]);
-//                ////                rt_printf("Cart_D_gain = %3f / %3f / %3f \n", PongBotQ.kd_EP_HS[0], PongBotQ.kd_EP_HS[1], PongBotQ.kd_EP_HS[2]);
-//                ////                rt_printf("_________________________________________\n");
-//                
-//                ////
+                //                rt_printf("--> com_pos= ( %3f / %3f/ %3f ) \n", PongBotQ.com_pos(0), PongBotQ.com_pos(1), PongBotQ.com_pos(2));
+                //                rt_printf("--> com_vel= ( %3f / %3f/ %3f ) \n", PongBotQ.com_vel(0), PongBotQ.com_vel(1), PongBotQ.com_vel(2));
+                //                rt_printf("--> target foot pos= ( %3f / %3f/ %3f ) / ( %3f / %3f/ %3f ) /( %3f / %3f/ %3f ) / ( %3f / %3f/ %3f ) \n", PongBotQ.RL_foot_pos(0), PongBotQ.RL_foot_pos(1), PongBotQ.RL_foot_pos(2), PongBotQ.RR_foot_pos(0), PongBotQ.RR_foot_pos(1), PongBotQ.RR_foot_pos(2), PongBotQ.FL_foot_pos(0), PongBotQ.FL_foot_pos(1), PongBotQ.FL_foot_pos(2), PongBotQ.FR_foot_pos(0), PongBotQ.FR_foot_pos(1), PongBotQ.FR_foot_pos(2));
+                //                rt_printf("--> target foot vel= ( %3f / %3f/ %3f ) / ( %3f / %3f/ %3f ) /( %3f / %3f/ %3f ) / ( %3f / %3f/ %3f ) \n", PongBotQ.RL_foot_vel(0), PongBotQ.RL_foot_vel(1), PongBotQ.RL_foot_vel(2), PongBotQ.RR_foot_vel(0), PongBotQ.RR_foot_vel(1), PongBotQ.RR_foot_vel(2), PongBotQ.FL_foot_vel(0), PongBotQ.FL_foot_vel(1), PongBotQ.FL_foot_vel(2), PongBotQ.FR_foot_vel(0), PongBotQ.FR_foot_vel(1), PongBotQ.FR_foot_vel(2));
+                //                rt_printf("--> Force = ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) \n", PongBotQ.Fc(6), PongBotQ.Fc(7), PongBotQ.Fc(8), PongBotQ.Fc(9), PongBotQ.Fc(10), PongBotQ.Fc(11), PongBotQ.Fc(12), PongBotQ.Fc(13), PongBotQ.Fc(14), PongBotQ.Fc(15), PongBotQ.Fc(16), PongBotQ.Fc(17));
+                //                rt_printf("--> C_Force = ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) \n", PongBotQ.C_term(6), PongBotQ.C_term(7), PongBotQ.C_term(8), PongBotQ.C_term(9), PongBotQ.C_term(10), PongBotQ.C_term(11), PongBotQ.C_term(12), PongBotQ.C_term(13), PongBotQ.C_term(14), PongBotQ.C_term(15), PongBotQ.C_term(16), PongBotQ.C_term(17));
+                //                rt_printf("--> G_Force = ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) / ( %3f / %3f / %3f ) \n", PongBotQ.G_term(6), PongBotQ.G_term(7), PongBotQ.G_term(8), PongBotQ.G_term(9), PongBotQ.G_term(10), PongBotQ.G_term(11), PongBotQ.G_term(12), PongBotQ.G_term(13), PongBotQ.G_term(14), PongBotQ.G_term(15), PongBotQ.G_term(16), PongBotQ.G_term(17));
+
+                //                rt_printf("--> RL(L)= ( %3f / %3f/ %3f ) \n", PongBotQ.act_RL_foot_pos_local(0), PongBotQ.act_RL_foot_pos_local(1), PongBotQ.act_RL_foot_pos_local(2));
+                //                rt_printf("--> RR(L)= ( %3f / %3f/ %3f ) \n", PongBotQ.act_RR_foot_pos_local(0), PongBotQ.act_RR_foot_pos_local(1), PongBotQ.act_RR_foot_pos_local(2));
+                //                rt_printf("--> FL(L)= ( %3f / %3f/ %3f ) \n", PongBotQ.act_FL_foot_pos_local(0), PongBotQ.act_FL_foot_pos_local(1), PongBotQ.act_FL_foot_pos_local(2));
+                //                rt_printf("--> FR(L)= ( %3f / %3f/ %3f ) \n", PongBotQ.act_FR_foot_pos_local(0), PongBotQ.act_FR_foot_pos_local(1), PongBotQ.act_FR_foot_pos_local(2));
+                //                rt_printf("=============================[Joint's values]=================================\n");
+                //                rt_printf("Gravity = (%3f / %3f / %3f),(%3f / %3f / %3f),(%3f / %3f / %3f),(%3f / %3f / %3f) \n", PongBotQ.G_term[6], PongBotQ.G_term[7], PongBotQ.G_term[8], PongBotQ.G_term[9], PongBotQ.G_term[10], PongBotQ.G_term[11], PongBotQ.G_term[12], PongBotQ.G_term[13], PongBotQ.G_term[14], PongBotQ.G_term[15], PongBotQ.G_term[16], PongBotQ.G_term[17]);
+                //                rt_printf("Coriolis = (%3f / %3f / %3f),(%3f / %3f / %3f),(%3f / %3f / %3f),(%3f / %3f / %3f) \n", PongBotQ.C_term[6], PongBotQ.C_term[7], PongBotQ.C_term[8], PongBotQ.C_term[9], PongBotQ.C_term[10], PongBotQ.C_term[11], PongBotQ.C_term[12], PongBotQ.C_term[13], PongBotQ.C_term[14], PongBotQ.C_term[15], PongBotQ.C_term[16], PongBotQ.C_term[17]);
+                //                rt_printf("TargetTorque = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.joint[0].torque, PongBotQ.joint[1].torque, PongBotQ.joint[2].torque, PongBotQ.joint[3].torque, PongBotQ.joint[4].torque, PongBotQ.joint[5].torque, PongBotQ.joint[6].torque, PongBotQ.joint[7].torque, PongBotQ.joint[8].torque, PongBotQ.joint[9].torque, PongBotQ.joint[10].torque, PongBotQ.joint[11].torque);
+                ////                
+                //                ////                rt_printf("_________________________________________\n");
+                //                ////                rt_printf("Joint_P_gain = %3f / %3f / %3f \n", PongBotQ.kp_joint_HS[0], PongBotQ.kp_joint_HS[1], PongBotQ.kp_joint_HS[2]);
+                //                ////                rt_printf("Joint_D_gain = %3f / %3f / %3f \n", PongBotQ.kd_joint_HS[0], PongBotQ.kd_joint_HS[1], PongBotQ.kd_joint_HS[2]);
+                //                ////                rt_printf("Cart_P_gain = %3f / %3f / %3f \n", PongBotQ.kp_EP_HS[0], PongBotQ.kp_EP_HS[1], PongBotQ.kp_EP_HS[2]);
+                //                ////                rt_printf("Cart_D_gain = %3f / %3f / %3f \n", PongBotQ.kd_EP_HS[0], PongBotQ.kd_EP_HS[1], PongBotQ.kd_EP_HS[2]);
+                //                ////                rt_printf("_________________________________________\n");
+                //                
+                //                ////
                 //rt_printf("----------------------------------------------------\n");
             }
         }
@@ -1012,18 +1017,19 @@ void signal_handler(int sig) {
 
     cout << "[1]" << endl;
     rt_task_delete(&IMU_task);
+    close(fd_MIC);
     
     cout << "[2]" << endl;
     rt_task_delete(&PongBotQ_task);
-    
+
     cout << "[3]" << endl;
     rt_task_delete(&Print_task);
-    
+
     cout << "[4]" << endl;
     rt_task_delete(&QP_task);
-    
+
     FileSave();
-    
+
     ros::shutdown();
     exit(0);
 }
@@ -1126,41 +1132,41 @@ void GetActualData(void) {
 void Load(void) {
     rbdl_check_api_version(RBDL_API_VERSION);
     version_test = rbdl_get_api_version();
-    
+
     printf("  rbdl api version = %d\n", version_test);
     Addons::URDFReadFromFile("/home/rclab/catkin_ws/src/PongBotQ_V6/model/PONGBOT_Q_V6/urdf/PONGBOT_Q_V6.urdf", pongbot_q_model, true, false);
     PongBotQ.setRobotModel(pongbot_q_model);
-    
-    IMU_COM_Setting();
- 
+
+    //IMU_COM_Setting();
+
     PongBotQ.ControlMode = CTRLMODE_NONE; //=0
     //PongBotQ.CommandFlag = TORQUE_OFF;
     PongBotQ.CommandFlag = NO_ACT;
-    
+
 }
 
 void TargetTor_Gen(void) {
-    
+
     static int limit_tor = 3000; //3000;
-    
+
     //*********** Arrange Target Torque in Elmo's order *************//
-    Low_TargetTor[0] = PongBotQ.joint[0].torque;          //HR joint
-    Low_TargetTor[1] = PongBotQ.joint[1].torque;          //HP joint
-    Low_TargetTor[2] = PongBotQ.joint[2].torque * 1.5;    //Knee joint
+    Low_TargetTor[0] = PongBotQ.joint[0].torque; //HR joint
+    Low_TargetTor[1] = PongBotQ.joint[1].torque; //HP joint
+    Low_TargetTor[2] = PongBotQ.joint[2].torque * 1.5; //Knee joint
 
-    Low_TargetTor[5] = PongBotQ.joint[3].torque;          //HR joint
-    Low_TargetTor[4] = PongBotQ.joint[4].torque;          //HP joint
-    Low_TargetTor[3] = PongBotQ.joint[5].torque * 1.5;    //Knee joint
+    Low_TargetTor[5] = PongBotQ.joint[3].torque; //HR joint
+    Low_TargetTor[4] = PongBotQ.joint[4].torque; //HP joint
+    Low_TargetTor[3] = PongBotQ.joint[5].torque * 1.5; //Knee joint
 
-    Low_TargetTor[6] = PongBotQ.joint[6].torque;          //HR joint
-    Low_TargetTor[7] = PongBotQ.joint[7].torque;          //HP joint
-    Low_TargetTor[8] = PongBotQ.joint[8].torque * 1.5;    //Knee joint
+    Low_TargetTor[6] = PongBotQ.joint[6].torque; //HR joint
+    Low_TargetTor[7] = PongBotQ.joint[7].torque; //HP joint
+    Low_TargetTor[8] = PongBotQ.joint[8].torque * 1.5; //Knee joint
 
-    Low_TargetTor[11] = PongBotQ.joint[9].torque;         //HR joint
-    Low_TargetTor[10] = PongBotQ.joint[10].torque;        //HP joint
-    Low_TargetTor[9] = PongBotQ.joint[11].torque * 1.5;   //Knee joint
+    Low_TargetTor[11] = PongBotQ.joint[9].torque; //HR joint
+    Low_TargetTor[10] = PongBotQ.joint[10].torque; //HP joint
+    Low_TargetTor[9] = PongBotQ.joint[11].torque * 1.5; //Knee joint
     //****************************************************************//
-    
+
     for (int i = 0; i < NUM_OF_ELMO; i++) {
         if (Low_TargetTor[i] >= limit_tor) {
             Low_TargetTor[i] = limit_tor;
@@ -1175,7 +1181,6 @@ void TargetTor_Gen(void) {
         ELMO_drive_pt[i].ptOutParam->TargetTorque = PongBotQ.Tor2Cur(Low_TargetTor[i], PongBotQ.Low_Kt[i], PongBotQ.Low_Gear[i], PongBotQ.Low_ratedCur[i]);
     }
 }
-
 
 void JoystickCallback(const sensor_msgs::Joy& msg) {
     const double max_x_vel = 0.3; //1.0;
@@ -1213,7 +1218,7 @@ void JoystickCallback(const sensor_msgs::Joy& msg) {
     }
     PongBotQ.tmp_x_moving_speed = -(double) msg.axes[1] / 32767.0 * max_x_vel;
     PongBotQ.tmp_base_ori(2) = -(double) msg.axes[2] / 32767.0 * max_yaw_ori;
-    
+
     PongBotQ.speed_x_HS = -(double) msg.axes[1] / 32767.0 * 0.06;
     PongBotQ.speed_y_HS = -(double) msg.axes[0] / 32767.0 * 0.04;
     PongBotQ.speed_yaw_HS = -(double) msg.axes[2] / 32767.0 * 4.0 * (PI / 180);
@@ -1227,7 +1232,7 @@ void ROSMsgPublish(void) {
     m_data.data[2] = PongBotQ.IMUYaw;
     m_data.data[3] = imu_time;
     m_data.data[4] = check_imu_time;
-    
+
 
     //    m_data.data[2] = PongBotQ.target_joint_vel_HS[2];
     //    m_data.data[1] = PongBotQ.actual_joint_pos_HS[1] * R2D;
@@ -1238,52 +1243,52 @@ void ROSMsgPublish(void) {
     //    m_data.data[5] = PongBotQ.target_joint_pos_HS[2] * R2D;
 
     //m_joint_states.header.stamp = ros::Time::now();
-//    m_joint_states.name[0] = "1_RL_HR_JOINT";
-//    m_joint_states.name[1] = "RL_HP_JOINT";
-//    m_joint_states.name[2] = "RL_KN_JOINT";
-//    m_joint_states.name[3] = "2_RR_HR_JOINT";
-//    m_joint_states.name[4] = "RR_HP_JOINT";
-//    m_joint_states.name[5] = "RR_KN_JOINT";
-//    m_joint_states.name[6] = "3_FL_HR_JOINT";
-//    m_joint_states.name[7] = "FL_HP_JOINT";
-//    m_joint_states.name[8] = "FL_KN_JOINT";
-//    m_joint_states.name[9] = "4_FR_HR_JOINT";
-//    m_joint_states.name[10] = "FR_HP_JOINT";
-//    m_joint_states.name[11] = "FR_KN_JOINT";
-//    
-//    m_joint_states.position[0] = PongBotQ.actual_pos[0];
-//    m_joint_states.position[1] = PongBotQ.actual_pos[1];
-//    m_joint_states.position[2] = PongBotQ.actual_pos[2];
-//    m_joint_states.position[3] = PongBotQ.actual_pos[3];
-//    m_joint_states.position[4] = PongBotQ.actual_pos[4];
-//    m_joint_states.position[5] = PongBotQ.actual_pos[5];
-//    m_joint_states.position[6] = PongBotQ.actual_pos[6];
-//    m_joint_states.position[7] = PongBotQ.actual_pos[7];
-//    m_joint_states.position[8] = PongBotQ.actual_pos[8];
-//    m_joint_states.position[9] = PongBotQ.actual_pos[9];
-//    m_joint_states.position[10] = PongBotQ.actual_pos[10];
-//    m_joint_states.position[11] = PongBotQ.actual_pos[11];
-    
-//    m_joint_states.position[] = PongBotQ.target_joint_pos_HS[0];
-//    m_joint_states.position[1] = PongBotQ.target_joint_pos_HS[1];
-//    m_joint_states.position[2] = PongBotQ.target_joint_pos_HS[2];
+    //    m_joint_states.name[0] = "1_RL_HR_JOINT";
+    //    m_joint_states.name[1] = "RL_HP_JOINT";
+    //    m_joint_states.name[2] = "RL_KN_JOINT";
+    //    m_joint_states.name[3] = "2_RR_HR_JOINT";
+    //    m_joint_states.name[4] = "RR_HP_JOINT";
+    //    m_joint_states.name[5] = "RR_KN_JOINT";
+    //    m_joint_states.name[6] = "3_FL_HR_JOINT";
+    //    m_joint_states.name[7] = "FL_HP_JOINT";
+    //    m_joint_states.name[8] = "FL_KN_JOINT";
+    //    m_joint_states.name[9] = "4_FR_HR_JOINT";
+    //    m_joint_states.name[10] = "FR_HP_JOINT";
+    //    m_joint_states.name[11] = "FR_KN_JOINT";
+    //    
+    //    m_joint_states.position[0] = PongBotQ.actual_pos[0];
+    //    m_joint_states.position[1] = PongBotQ.actual_pos[1];
+    //    m_joint_states.position[2] = PongBotQ.actual_pos[2];
+    //    m_joint_states.position[3] = PongBotQ.actual_pos[3];
+    //    m_joint_states.position[4] = PongBotQ.actual_pos[4];
+    //    m_joint_states.position[5] = PongBotQ.actual_pos[5];
+    //    m_joint_states.position[6] = PongBotQ.actual_pos[6];
+    //    m_joint_states.position[7] = PongBotQ.actual_pos[7];
+    //    m_joint_states.position[8] = PongBotQ.actual_pos[8];
+    //    m_joint_states.position[9] = PongBotQ.actual_pos[9];
+    //    m_joint_states.position[10] = PongBotQ.actual_pos[10];
+    //    m_joint_states.position[11] = PongBotQ.actual_pos[11];
 
-//    odom_trans.header.stamp = ros::Time::now();
-//    odom_trans.header.frame_id = "odom";
-//    odom_trans.child_frame_id = "BASE";
-//    //    
-//    odom_trans.transform.translation.x = PongBotQ.init_base_pos(0);
-//    odom_trans.transform.translation.y = PongBotQ.init_base_pos(1);
-//    odom_trans.transform.translation.z = PongBotQ.init_base_pos(2);
-//    odom_trans.transform.rotation.x = 0;
-//    odom_trans.transform.rotation.y = 0;
-//    odom_trans.transform.rotation.z = 0;
-//    odom_trans.transform.rotation.w = 1;
-   
+    //    m_joint_states.position[] = PongBotQ.target_joint_pos_HS[0];
+    //    m_joint_states.position[1] = PongBotQ.target_joint_pos_HS[1];
+    //    m_joint_states.position[2] = PongBotQ.target_joint_pos_HS[2];
+
+    //    odom_trans.header.stamp = ros::Time::now();
+    //    odom_trans.header.frame_id = "odom";
+    //    odom_trans.child_frame_id = "BASE";
+    //    //    
+    //    odom_trans.transform.translation.x = PongBotQ.init_base_pos(0);
+    //    odom_trans.transform.translation.y = PongBotQ.init_base_pos(1);
+    //    odom_trans.transform.translation.z = PongBotQ.init_base_pos(2);
+    //    odom_trans.transform.rotation.x = 0;
+    //    odom_trans.transform.rotation.y = 0;
+    //    odom_trans.transform.rotation.z = 0;
+    //    odom_trans.transform.rotation.w = 1;
+
     P_data.publish(m_data);
 
-//    P_joint_states.publish(m_joint_states);
-//    broadcaster.sendTransform(odom_trans);
+    //    P_joint_states.publish(m_joint_states);
+    //    broadcaster.sendTransform(odom_trans);
 
 }
 
@@ -1466,37 +1471,41 @@ bool ecat_init(void) {
 }
 
 int IMU_COM_Setting() {
-    printf(" IMU Setting ... \n" );
+    printf(" IMU Setting ... \n");
     struct termios oldtio, newtio;
 
     //fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
-//    fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
-    fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY | O_NONBLOCK);
+    //    fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
+    fd_MIC = open("/dev/IMU_COM", O_RDWR | O_NOCTTY | O_NONBLOCK | O_NDELAY);
+    //fd_MIC = open("/dev/IMU_COM", O_RDWR | O_NOCTTY);
+    
+    //fd_MIC = open("/dev/IMU_COM", O_RDWR);
     // dev/ttyACM0 
     // O_RDWF : Use write/read mode
     // O_NOCCTY : No Controlling tty 
-    // O_NONBLOC : 
+    // O_NONBLOCK : 
     if (fd_MIC < 0) {
         perror("/dev/ttyACM0");
         exit(-1);
     }
-    tcgetattr(fd_MIC, &oldtio);   // get current port's setting.
+    tcgetattr(fd_MIC, &oldtio); // get current port's setting.
     bzero(&newtio, sizeof (newtio)); // clear new port's setting.
-     //newtio.c_cflag = B115200 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+    //memset(&newtio, 0, sizeof (newtio)); // clear new port's setting.
+    
+    //newtio.c_cflag = B115200 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
     //newtio.c_cflag = B230400 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
     //newtio.c_cflag = B460800 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
-    
     // Control mode Setting(speed = 921600, letter size = 8bits, neglect modem line, allow to receive)
     newtio.c_cflag = B921600 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
-    
+
     // Input mode Setting(neglect partiy error, transform CR to NL)
     newtio.c_iflag = IGNPAR | ICRNL; //Parity 오류가 있는 문자 무시
-    
+
     // Output mode Setting(No setting)
     newtio.c_oflag = 0; //출력처리 설정 0이면 아무것도 안함
-    
+
     // Local mode Setting(No setting)
-    newtio.c_lflag = 0; //Local Mode 설정, ICANON이면 널 문자가 들어올때까지 수신
+    newtio.c_lflag = 0; //Local Mode 설정, ICANON이면 널 문자가 들어올때까지 수신(non-canonical mode)
     
     //Control Characters
     newtio.c_cc[VINTR] = 0;
@@ -1504,11 +1513,11 @@ int IMU_COM_Setting() {
     newtio.c_cc[VERASE] = 0;
     newtio.c_cc[VKILL] = 0;
     newtio.c_cc[VEOF] = 4;
-    //newtio.c_cc[VTIME] = 0; //time-out 값으로 사용, time-out 값은 TIME*0.1초
-    newtio.c_cc[VTIME] = 100; //time-out 값으로 사용, time-out 값은 TIME*0.1초
+    newtio.c_cc[VTIME] = 0; //time-out 값으로 사용, time-out 값은 TIME*0.1초
+    //newtio.c_cc[VTIME] = 100; //time-out 값으로 사용, time-out 값은 TIME*0.1초
 
-    //newtio.c_cc[VMIN] = 1; //read가 리턴되기 위한 최소한의 문자 개수
-    newtio.c_cc[VMIN] = 0; //read가 리턴되기 위한 최소한의 문자 개수
+    newtio.c_cc[VMIN] = 1; //read가 리턴되기 위한 최소한의 문자 개수
+    //newtio.c_cc[VMIN] = 0; //read가 리턴되기 위한 최소한의 문자 개수
 
     newtio.c_cc[VSWTC] = 0;
     newtio.c_cc[VSTART] = 0;
@@ -1525,9 +1534,90 @@ int IMU_COM_Setting() {
     tcsetattr(fd_MIC, TCSANOW, &newtio); //newtio 터미널 구조체의 속정으로 설정을 적용
 
     imu_run_flag = 1;
-//    fd_MIC=rt_dev_open("/dev/ttyACM0", O_RDWR | O_NOCTTY | O_NONBLOCK);
+    //    fd_MIC=rt_dev_open("/dev/ttyACM0", O_RDWR | O_NOCTTY | O_NONBLOCK);
     //cout << "fd_MIC =" << fd_MIC << endl;
     return 1;
+}
+
+void imu_run(void *arg) {
+    //unsigned int MIC_length = 20;
+    unsigned int MIC_length = 20;
+    //unsigned char Receive_MIC_buf[MIC_length];
+    
+//    unsigned char Send_MIC_buf[13];
+//    unsigned char Read_MIC_buf[30];
+
+    unsigned char tmp_Receive_MIC_buf[1];
+    unsigned char Receive_MIC_buf[MIC_length];
+    //unsigned char tmp_Receive_MIC_buf[5];
+    //rt_task_set_periodic(NULL, TM_NOW, 0.5*cycle_ns);
+    //    rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
+    //rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
+
+    //rt_task_set_periodic(NULL, TM_NOW, 2 * cycle_ns);
+    rt_task_set_periodic(NULL, TM_NOW, 1 * cycle_ns);
+    //rt_task_set_periodic(NULL, TM_NOW, 5*cycle_ns); //소
+    //rt_task_set_periodic(NULL, TM_NOW, 10*cycle_ns);
+    //rt_task_set_periodic(NULL, TM_NOW, 20*cycle_ns);
+
+    uint32_t roll_MIC_f = 0;
+    uint32_t pitch_MIC_f = 0;
+    uint32_t yaw_MIC_f = 0;
+
+    uint32_t Gyro_X_MIC_f = 0;
+    uint32_t Gyro_Y_MIC_f = 0;
+    uint32_t Gyro_Z_MIC_f = 0;
+
+    uint32_t Acc_X_MIC_f = 0;
+    uint32_t Acc_Y_MIC_f = 0;
+    uint32_t Acc_Z_MIC_f = 0;
+
+    float roll_MIC = 0, pitch_MIC = 0, yaw_MIC = 0;
+    float Gyro_X_MIC = 0, Gyro_Y_MIC = 0, Gyro_Z_MIC = 0;
+    float Acc_X_MIC = 0, Acc_Y_MIC = 0, Acc_Z_MIC = 0;
+
+    const double PI_IMU = 3.1415927f;
+
+    int mic_flag1 = 0;
+    int data_start = 0;
+
+    IMU_COM_Setting();
+    
+    memset(Receive_MIC_buf, 0, MIC_length);
+
+    while (imu_run_flag) {
+        rt_task_wait_period(NULL);
+        uint8_t checksum_byte1 = 0, checksum_byte2 = 0;
+
+        previous_imu_time = now_imu_time;
+        check_previous_imu_time = rt_timer_read();
+
+//        while(read(fd_MIC, tmp_Receive_MIC_buf, 1)>0){
+//            
+//        }
+        //cout << "fd_MIC=" << read(fd_MIC, tmp_Receive_MIC_buf, 1) << endl;
+        //        while ((double) read(fd_MIC, tmp_Read_MIC_buf, 1) > 0) {
+        //            if (tmp_Read_MIC_buf[0] == 0x75) {
+        //                read(fd_MIC, Read_MIC_buf + 1, 30 - 1);
+        //                Read_MIC_buf[0] = tmp_Read_MIC_buf[0];
+        //                for (int i = 0; i < 30; i++) {
+        //                    rt_printf("0x%X /", Read_MIC_buf[i]);
+        //                }
+        //                rt_printf("\n");
+        //            }
+        //        }
+        //tcflush(fd_MIC, TCIFLUSH);
+        cout <<"flush="<< tcflush(fd_MIC, TCIOFLUSH) << endl;
+
+        now_imu_time = rt_timer_read();
+        check_now_imu_time = rt_timer_read();
+        //
+        imu_time = (double) (now_imu_time - previous_imu_time) / 1000000;
+        check_imu_time = (double) (check_now_imu_time - check_previous_imu_time) / 1000000;
+
+        //tcflush(fd_MIC,TCIFLUSH);
+    }
+    //tcsetattr(fd_MIC,TCSANOW,&oldtio);
 }
 
 //void imu_run(void *arg) {
@@ -1778,181 +1868,60 @@ int IMU_COM_Setting() {
 //    //tcsetattr(fd_MIC,TCSANOW,&oldtio);
 //}
 
-void imu_run(void *arg) {
-    //unsigned int MIC_length = 20;
-    unsigned int MIC_length = 20;
-    //unsigned char Receive_MIC_buf[MIC_length];
-    unsigned char tmp_Receive_MIC_buf[1];
-    unsigned char Receive_MIC_buf[MIC_length];
-    //unsigned char tmp_Receive_MIC_buf[5];
-    //rt_task_set_periodic(NULL, TM_NOW, 0.5*cycle_ns);
-//    rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
-    //rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
-    
-    //rt_task_set_periodic(NULL, TM_NOW, 2 * cycle_ns);
-    rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
-    //rt_task_set_periodic(NULL, TM_NOW, 5*cycle_ns); //소
-    //rt_task_set_periodic(NULL, TM_NOW, 10*cycle_ns);
-    //rt_task_set_periodic(NULL, TM_NOW, 20*cycle_ns);
 
-    uint32_t roll_MIC_f = 0;
-    uint32_t pitch_MIC_f = 0;
-    uint32_t yaw_MIC_f = 0;
 
-    uint32_t Gyro_X_MIC_f = 0;
-    uint32_t Gyro_Y_MIC_f = 0;
-    uint32_t Gyro_Z_MIC_f = 0;
+    void QP_run(void *arg) {
+        rt_task_set_periodic(NULL, TM_NOW, 2 * cycle_ns);
 
-    uint32_t Acc_X_MIC_f = 0;
-    uint32_t Acc_Y_MIC_f = 0;
-    uint32_t Acc_Z_MIC_f = 0;
-       
-    float roll_MIC = 0, pitch_MIC = 0, yaw_MIC = 0;
-    float Gyro_X_MIC = 0, Gyro_Y_MIC = 0, Gyro_Z_MIC = 0;
-    float Acc_X_MIC = 0, Acc_Y_MIC = 0, Acc_Z_MIC = 0;
+        while (QP_run_flag) {
+            rt_task_wait_period(NULL);
+            check_previous_QP_time = rt_timer_read();
+            previous_QP_time = now_QP_time;
 
-    const double PI_IMU = 3.1415927f;
-    
-    int mic_flag1 = 0;
-    int data_start = 0;
-    
-    memset(Receive_MIC_buf, 0, MIC_length);
-
-    while (imu_run_flag) {
-        rt_task_wait_period(NULL);
-        uint8_t checksum_byte1 = 0, checksum_byte2 = 0;
-        
-        previous_imu_time = now_imu_time;
-        check_previous_imu_time = rt_timer_read();
-
-        if (mic_flag1 == 0) {
-            //memset(Receive_MIC_buf, 0, MIC_length);
-            
-            if ((double) read(fd_MIC, tmp_Receive_MIC_buf, 1) == 1) {
-//                if (tmp_Receive_MIC_buf[0] == 0x75) {
-//                    read(fd_MIC, Receive_MIC_buf + 1, MIC_length - 1);
-//                    Receive_MIC_buf[0] = tmp_Receive_MIC_buf[0];
-//                    for (int j = 0; j < MIC_length-2; j++) {
-//                        checksum_byte1 += Receive_MIC_buf[j];
-//                        checksum_byte2 += checksum_byte1;
-//                    }
-//                } else {
-//                    rt_printf("Error Packet.. \n");
-//                }
-            }
-        }
-         
-//        if (Receive_MIC_buf[MIC_length - 2] == checksum_byte1 && Receive_MIC_buf[MIC_length - 1] == checksum_byte2) {
-//            if (Receive_MIC_buf[0] == 0x75 && Receive_MIC_buf[1] == 0x65 && Receive_MIC_buf[2] == 0x80 && Receive_MIC_buf[3] == 0x0E && Receive_MIC_buf[4] == 0x0E && Receive_MIC_buf[5] == 0x0C) {
-//                data_start = 6;
-//                mic_flag1 = 1;
-//                //rt_printf(" ********* \n");
-//            }
-//        } else {
-//            n_fail++;
-//        }
-//        if (mic_flag1 == 1) {
-//
-//            roll_MIC_f = Receive_MIC_buf[data_start] << 24 | Receive_MIC_buf[data_start + 1] << 16 | Receive_MIC_buf[data_start + 2] << 8 | Receive_MIC_buf[data_start + 3];
-//            pitch_MIC_f = Receive_MIC_buf[data_start + 4] << 24 | Receive_MIC_buf[data_start + 5] << 16 | Receive_MIC_buf[data_start + 6] << 8 | Receive_MIC_buf[data_start + 7];
-//            yaw_MIC_f = Receive_MIC_buf[data_start + 8] << 24 | Receive_MIC_buf[data_start + 9] << 16 | Receive_MIC_buf[data_start + 10] << 8 | Receive_MIC_buf[data_start + 11];
-//            roll_MIC = *(float*) &roll_MIC_f;
-//            roll_MIC = -roll_MIC;
-//            pitch_MIC = *(float*) &pitch_MIC_f;
-//            pitch_MIC = pitch_MIC;
-//            yaw_MIC = *(float*) &yaw_MIC_f;
-//            yaw_MIC = -yaw_MIC;
-//            
-//            PongBotQ.IMURoll=roll_MIC;
-//            PongBotQ.IMUPitch=pitch_MIC;
-//            PongBotQ.IMUYaw=yaw_MIC;
-//            
-//            mic_flag1 = 0;
-//            data_start = 0;
-//            //tcflush(fd_MIC, TCIFLUSH);
-//            //memset(Receive_MIC_buf, 0, MIC_length);
-//        }
-//
-        check_now_imu_time = rt_timer_read();
-        now_imu_time = rt_timer_read();
-//
-        check_imu_time = (double) (check_now_imu_time - check_previous_imu_time) / 1000000;
-        imu_time = (double) (now_imu_time - previous_imu_time) / 1000000;
-//
-        IMU_time_set(1) = check_imu_time;
-        IMU_time_set = Max_Value_Save(IMU_time_set);
-        if (imu_time > 4.3 || imu_time < 3.5) {
-            rt_printf("-------S---------\n");
-            for (int i = 0; i < MIC_length; i++) {
-                rt_printf("0x%X /", Receive_MIC_buf[i]);
-            }
-            rt_printf("\n");
-            rt_printf("check1=0x%X \n", checksum_byte1);
-            rt_printf("check2=0x%X \n", checksum_byte2);
-            rt_printf("\n");
-            rt_printf("Thread_time : (%f [ms] / %f [ms])\n", check_imu_time, imu_time);
-            rt_printf(" IMU Time(Max) : %f [ms]\n", IMU_time_set(0));
-            rt_printf("RPY : (%f / %f /%f)\n", PongBotQ.IMURoll, PongBotQ.IMUPitch, PongBotQ.IMUYaw);
-            rt_printf("-------E---------\n");
-        }
-        //rt_printf("\n -----Data End--------\n");
-
-    }
-    //tcsetattr(fd_MIC,TCSANOW,&oldtio);
-}
-
-void QP_run(void *arg){
-    rt_task_set_periodic(NULL, TM_NOW, 2 * cycle_ns);
-    
-    while (QP_run_flag) {
-        rt_task_wait_period(NULL);
-        check_previous_QP_time = rt_timer_read();
-        previous_QP_time = now_QP_time;
-
-        if (sys_ready_flag) {
-            if (PongBotQ.CommandFlag != NO_ACT && PongBotQ.CommandFlag != TORQUE_OFF) {
-                if (PongBotQ.CommandFlag == GOTO_SLOW_WALK_POS_HS) {
-                    //PongBotQ.Get_Opt_F_HS3();
-                } else {
-                    PongBotQ.QP_process();
+            if (sys_ready_flag) {
+                if (PongBotQ.CommandFlag != NO_ACT && PongBotQ.CommandFlag != TORQUE_OFF) {
+                    if (PongBotQ.CommandFlag == GOTO_SLOW_WALK_POS_HS) {
+                        //PongBotQ.Get_Opt_F_HS3();
+                    } else {
+                        PongBotQ.QP_process();
+                    }
                 }
             }
+
+            check_now_QP_time = rt_timer_read();
+            now_QP_time = rt_timer_read();
+
+            check_QP_time = (double) (check_now_QP_time - check_previous_QP_time) / 1000000;
+            QP_time = (double) (now_QP_time - previous_QP_time) / 1000000;
+
+            QP_time_set(1) = check_QP_time;
+            QP_time_set = Max_Value_Save(QP_time_set);
         }
-        
-        check_now_QP_time = rt_timer_read();
-        now_QP_time = rt_timer_read();
-
-        check_QP_time = (double) (check_now_QP_time - check_previous_QP_time) / 1000000;
-        QP_time = (double) (now_QP_time - previous_QP_time) / 1000000;
-
-        QP_time_set(1) = check_QP_time;
-        QP_time_set = Max_Value_Save(QP_time_set);
     }
-}
 
-VectorXd Max_Value_Save(VectorXd Value_set) {
-    VectorNd new_Value_set(2);
-    if (abs(Value_set(0)) < abs(Value_set(1))) {
-        Value_set(0) = Value_set(1);
+    VectorXd Max_Value_Save(VectorXd Value_set) {
+        VectorNd new_Value_set(2);
+        if (abs(Value_set(0)) < abs(Value_set(1))) {
+            Value_set(0) = Value_set(1);
+        }
+        new_Value_set = Value_set;
+        return new_Value_set;
     }
-    new_Value_set = Value_set;
-    return new_Value_set;
-}
 
-static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value) {
-    int wkc;
-    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
-    return wkc;
-}
+    static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value) {
+        int wkc;
+        wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+        return wkc;
+    }
 
-static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value) {
-    int wkc;
-    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
-    return wkc;
-}
+    static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value) {
+        int wkc;
+        wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+        return wkc;
+    }
 
-static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value) {
-    int wkc;
-    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
-    return wkc;
-}
+    static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value) {
+        int wkc;
+        wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+        return wkc;
+    }

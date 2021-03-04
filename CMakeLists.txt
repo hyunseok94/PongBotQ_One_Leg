@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(elmo_pkgs)
+
+#PROJECT(pongbot_pkgs)
+project(pongbot_pkgs)
 
 SET (SRC_FILES
  src/main.cpp
@@ -20,17 +22,10 @@ SET (SRC_FILES
  include/ethercat/soem/ethercatsoe.c
 )
 
-## Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++11)
-
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
 
-find_package(RBDL REQUIRED)
-find_package(Eigen3 3.0.0 REQUIRED)
-find_package(osqp REQUIRED)
-
 # appended to the catkin_variables(catkin_INCLUDE_DIRS contains the include paths for this lists)
-find_package(catkin REQUIRED COMPONENTS
+FIND_PACKAGE(catkin REQUIRED COMPONENTS
  roscpp
  std_msgs
  #soem
@@ -38,8 +33,11 @@ find_package(catkin REQUIRED COMPONENTS
  geometry_msgs
  tf
 )
+FIND_PACKAGE(RBDL REQUIRED)
+FIND_PACKAGE(Eigen3 3.0.0 REQUIRED)
+FIND_PACKAGE(osqp REQUIRED)
 
-catkin_package(
+CATKIN_PACKAGE(
   INCLUDE_DIRS include   # "include" folder
 #  LIBRARIES elmo_pkgs
 #  CATKIN_DEPENDS other_catkin_pkg
@@ -51,7 +49,7 @@ catkin_package(
 # include paths - where can header files be found for the code being built
 # library paths - where are libraries located that executalbe target build against
 
-include_directories(
+INCLUDE_DIRECTORIES(
  include
  ${catkin_INCLUDE_DIRS}
  ${RBDL_INCLUDE_DIR}
@@ -68,21 +66,37 @@ include_directories(
 )
 
 # Xenomai setting
-execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+#execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+#execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+
 ## Xenomai Setting end
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
+#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -#D_REENTRANT -D__COBALT__")
+
+## Compile as C++11, supported in ROS Kinetic and newer
+#ADD_COMPILE_OPTIONS(-std=c++11)
+#ADD_COMPILE_OPTIONS(-std=c++11 -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__)
+SET(CMAKE_CXX_FLAGS "-g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__ -std=c++11")
 
 # To Set executable file's location to ${PROJECT_SOURCE_DIR}/bin.
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # To specify an executable target that must be buillt.
-add_executable(elmo_pkgs_exe ${SRC_FILES})
+#add_executable(${CMAKE_PROJECT_NAME} ${SRC_FILES})
+add_executable(pongbot_pkgs_exe ${SRC_FILES})
+
 
 # To specify which libraries an executable target links against.
 #target_link_libraries(elmo_pkgs_exe PRIVATE osqp::osqpstatic ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY} )
-target_link_libraries(elmo_pkgs_exe PRIVATE ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
-target_link_libraries(elmo_pkgs_exe PRIVATE osqp::osqp)
+
+#target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
+#target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE osqp::osqp)
+
+target_link_libraries(pongbot_pkgs_exe PRIVATE ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
+target_link_libraries(pongbot_pkgs_exe PRIVATE osqp::osqp)
 
 
 #examples

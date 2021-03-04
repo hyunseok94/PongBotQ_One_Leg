@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>elmo_pkgs</name>
+  <name>pongbot_pkgs</name>
   <version>0.0.0</version>
-  <description>The elmo_pkgs package</description>
+  <description>The pongbot_pkgs package</description>
 
   <maintainer email="rc_lab@todo.todo">rc_lab</maintainer>
 
