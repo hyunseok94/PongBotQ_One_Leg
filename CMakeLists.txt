@@ -1,30 +1,10 @@
 cmake_minimum_required(VERSION 3.0.2)
 
-#PROJECT(pongbot_pkgs)
 project(pongbot_pkgs)
 
-SET (SRC_FILES
- src/main.cpp
- src/CRobot.cpp
- include/ethercat/etc/servo.c
- include/ethercat/etc/ecat_dc.c
- include/ethercat/etc/slave_info.c
- include/ethercat/osal/osal.c
- include/ethercat/oshw/nicdrv.c
- include/ethercat/oshw/oshw.c
- include/ethercat/soem/ethercatbase.c
- include/ethercat/soem/ethercatcoe.c
- include/ethercat/soem/ethercatconfig.c
- include/ethercat/soem/ethercatdc.c
- include/ethercat/soem/ethercatfoe.c
- include/ethercat/soem/ethercatmain.c
- include/ethercat/soem/ethercatprint.c
- include/ethercat/soem/ethercatsoe.c
-)
-
+add_compile_options(-std=c++11)
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
 
-# appended to the catkin_variables(catkin_INCLUDE_DIRS contains the include paths for this lists)
 FIND_PACKAGE(catkin REQUIRED COMPONENTS
  roscpp
  std_msgs
@@ -65,39 +45,49 @@ INCLUDE_DIRECTORIES(
  /usr/xenomai/
 )
 
+SET (SRC_FILES
+ src/main.cpp
+ src/CRobot.cpp
+ include/ethercat/etc/servo.c
+ include/ethercat/etc/ecat_dc.c
+ include/ethercat/etc/slave_info.c
+ include/ethercat/osal/osal.c
+ include/ethercat/oshw/nicdrv.c
+ include/ethercat/oshw/oshw.c
+ include/ethercat/soem/ethercatbase.c
+ include/ethercat/soem/ethercatcoe.c
+ include/ethercat/soem/ethercatconfig.c
+ include/ethercat/soem/ethercatdc.c
+ include/ethercat/soem/ethercatfoe.c
+ include/ethercat/soem/ethercatmain.c
+ include/ethercat/soem/ethercatprint.c
+ include/ethercat/soem/ethercatsoe.c
+)
+
+# appended to the catkin_variables(catkin_INCLUDE_DIRS contains the include paths for this lists)
+
+
 # Xenomai setting
-#execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-#execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-
+execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --cflags OUTPUT_VARIABLE XENO_CFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldflags OUTPUT_VARIABLE XENO_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
 ## Xenomai Setting end
-#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -#D_REENTRANT -D__COBALT__")
+
+#SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-#ADD_COMPILE_OPTIONS(-std=c++11)
-#ADD_COMPILE_OPTIONS(-std=c++11 -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__)
-SET(CMAKE_CXX_FLAGS "-g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__ -std=c++11")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
 
 # To Set executable file's location to ${PROJECT_SOURCE_DIR}/bin.
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 # To specify an executable target that must be buillt.
-#add_executable(${CMAKE_PROJECT_NAME} ${SRC_FILES})
 add_executable(pongbot_pkgs_exe ${SRC_FILES})
-
 
 # To specify which libraries an executable target links against.
 #target_link_libraries(elmo_pkgs_exe PRIVATE osqp::osqpstatic ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY} )
 
-#target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
-#target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE osqp::osqp)
-
 target_link_libraries(pongbot_pkgs_exe PRIVATE ${catkin_LIBRARIES} ${RBDL_LIBRARY} ${RBDL_URDFReader_LIBRARY})
 target_link_libraries(pongbot_pkgs_exe PRIVATE osqp::osqp)
-
 
 #examples
 #add_subdirectory(examples/xenomai_test)

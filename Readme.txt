@@ -8,13 +8,13 @@
 < Package Execution Command order >
  - typing the codes on termianl in order
 ___________________________________________________________________________________ 
-cd ~/catkin_ws/src/PongBotQ_V6/RTnet_Setting && sudo sh RT_net_Setting.sh
-___________________________________________________________________________________ 
+RTnet Setting Command : cd ~/catkin_ws/src/PongBotQ_V6/RTnet_Setting && sudo sh RT_net_Setting.sh
+JoyStick Command : sudo ds4drv ___________________________________________________________________________________ 
 Main. execution
 (0) roscore
 (1) cm
-(2) cd ~/catkin_ws/src/PongBotQ_V6/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip elmo_pkgs_exe && sudo chmod a+rw /dev/ttyACM0
-(4) roslaunch elmo_pkgs elmo.launch
+(2) cd ~/catkin_ws/src/PongBotQ_V6/bin/ && sudo setcap cap_net_admin,cap_net_raw=eip pongbot_pkgs_exe && sudo chmod a+rw /dev/ttyACM0
+(3) roslaunch pongbot_pkgs pongbot.launch
 ___________________________________________________________________________________
 Example. xenomai_test execution
 (0) cm

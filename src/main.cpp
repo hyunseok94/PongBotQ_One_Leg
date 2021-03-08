@@ -35,7 +35,7 @@
 #include "pdo_def.h"
 #include "ecat_dc.h"
 #include "slave_info.h"
-//#include "osal.h"
+#include "osal.h"
 
 // **********Eigen library*********//
 #include "Eigen/Dense"
@@ -55,7 +55,7 @@
 #include <alchemy/sem.h>
 #include <boilerplate/trace.h>
 #include <xenomai/init.h>
-#include <rtdm/serial.h>
+//#include <rtdm/serial.h>
 
 // *********** RVIZ *************//
 #include <sensor_msgs/JointState.h>             //for rviz
@@ -232,8 +232,8 @@ void JoystickCallback(const sensor_msgs::Joy& msg);
 void ROSMsgPublish(void);
 
 int main(int argc, char* argv[]) {
-    rtser_config_t ABC;
-    ABC.baud_rate = 115200;
+//    rtser_config_t ABC;
+//    ABC.baud_rate = 115200;
 
     printf(" ROS Setting ...\n");
     //ros::init(argc, argv, "elmo_pkgs");
@@ -244,7 +244,7 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signal_handler);
     mlockall(MCL_CURRENT | MCL_FUTURE);
 
-    S_Joystick = nh.subscribe("joy", 1, &JoystickCallback);
+    //S_Joystick = nh.subscribe("joy", 1, &JoystickCallback);
 
     P_data = nh.advertise<std_msgs::Float64MultiArray>("tmp_data", 1000);
     P_joint_states = nh.advertise<sensor_msgs::JointState>("joint_states", 1);
@@ -274,15 +274,15 @@ int main(int argc, char* argv[]) {
         sleep(1);
     }
 
-    //rt_task_create(&PongBotQ_task, "Motion_task", 0, 99, 0);
-    //rt_task_create(&Print_task, "Print_task", 0, 60, 0);
+    rt_task_create(&PongBotQ_task, "Motion_task", 0, 99, 0);
+    rt_task_create(&Print_task, "Print_task", 0, 60, 0);
     //rt_task_create(&IMU_task, "Imu_task", 0, 95, 0);
-    rt_task_create(&IMU_task, "Imu_task", 0, 99, 0);
+    //rt_task_create(&IMU_task, "Imu_task", 0, 99, 0);
     //rt_task_create(&QP_task, "QP_task", 0, 90, 0);
 
-    //rt_task_start(&PongBotQ_task, &motion_run, NULL);
-    //rt_task_start(&Print_task, &print_run, NULL);
-    rt_task_start(&IMU_task, &imu_run, NULL);
+    rt_task_start(&PongBotQ_task, &motion_run, NULL);
+    rt_task_start(&Print_task, &print_run, NULL);
+    //rt_task_start(&IMU_task, &imu_run, NULL);
     //rt_task_start(&QP_task, &QP_run, NULL);
     printf("\n");
 
@@ -896,7 +896,7 @@ void motion_run(void* arg) {
                     // PongBotQ.ComputeTorqueControl_HS();
                     break;
             }
-            TargetTor_Gen();
+           // TargetTor_Gen();
         }
 
         //============   Thread Time Checking   ============//
@@ -963,18 +963,18 @@ void print_run(void* arg) {
                     rt_printf("%i\n", stick / 10);
                 stick++;
             } else {
-                //                rt_printf("=============================[Thread Time]=================================\n");
-                //                rt_printf("Thread_time : (%f [ms] / %f [ms]) / (%f [ms]) / (%f [ms] / %f [ms]) / (%f [ms] / %f [ms])\n", check_motion_time, motion_time, print_time, check_imu_time, imu_time, check_QP_time, QP_time);
-                //                rt_printf("Motion Time(Max) : %f [ms] / IMU Time(Max) : %f [ms]\n", motion_time_set(0), IMU_time_set(0));
+                rt_printf("=============================[Thread Time]=================================\n");
+                rt_printf("Thread_time : (%f [ms] / %f [ms]) / (%f [ms]) / (%f [ms] / %f [ms]) / (%f [ms] / %f [ms])\n", check_motion_time, motion_time, print_time, check_imu_time, imu_time, check_QP_time, QP_time);
+                rt_printf("Motion Time(Max) : %f [ms] / IMU Time(Max) : %f [ms]\n", motion_time_set(0), IMU_time_set(0));
                 //                rt_printf("=============================[Elmo Status]=================================\n");
                 //                //                //rt_printf("Status word = (0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X) \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord, ELMO_drive_pt[5].ptInParam->StatusWord, ELMO_drive_pt[4].ptInParam->StatusWord, ELMO_drive_pt[3].ptInParam->StatusWord, ELMO_drive_pt[6].ptInParam->StatusWord, ELMO_drive_pt[7].ptInParam->StatusWord, ELMO_drive_pt[8].ptInParam->StatusWord, ELMO_drive_pt[11].ptInParam->StatusWord, ELMO_drive_pt[10].ptInParam->StatusWord, ELMO_drive_pt[9].ptInParam->StatusWord);
                 //                //                //rt_printf("Actual Torque = (%d / %d / %d),(%d / %d / %d),(%d / %d / %d),(%d / %d / %d)\n", ELMO_drive_pt[0].ptInParam->TorqueActualValue, ELMO_drive_pt[1].ptInParam->TorqueActualValue, ELMO_drive_pt[2].ptInParam->TorqueActualValue, ELMO_drive_pt[5].ptInParam->TorqueActualValue, ELMO_drive_pt[4].ptInParam->TorqueActualValue, ELMO_drive_pt[3].ptInParam->TorqueActualValue, ELMO_drive_pt[6].ptInParam->TorqueActualValue, ELMO_drive_pt[7].ptInParam->TorqueActualValue, ELMO_drive_pt[8].ptInParam->TorqueActualValue, ELMO_drive_pt[11].ptInParam->TorqueActualValue, ELMO_drive_pt[10].ptInParam->TorqueActualValue, ELMO_drive_pt[9].ptInParam->TorqueActualValue);
-                //                //                rt_printf("=============================[Sensor]=================================\n");
+                rt_printf("=============================[Sensor]=================================\n");
                 //                //                rt_printf("Base_acc(m/s^2) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.IMUAccX, PongBotQ.IMUAccY, PongBotQ.IMUAccZ, x_acc_set(0), y_acc_set(0), z_acc_set(0));
                 //                rt_printf("Base_ori(degree) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f) \n", PongBotQ.IMURoll*R2D, PongBotQ.IMUPitch*R2D, PongBotQ.IMUYaw * R2D, roll_set(0) * R2D, pitch_set(0) * R2D, yaw_set(0) * R2D);
                 //                rt_printf("Base_ori_vel(rad/s) = ( %3f / %3f/ %3f )  ---  Max=(%3f / %3f / %3f)  \n", PongBotQ.IMURoll_dot, PongBotQ.IMUPitch_dot, PongBotQ.IMUYaw_dot, roll_vel_set(0), pitch_vel_set(0), yaw_vel_set(0));
-                //                rt_printf("actual_q(degree) = ( %3f / %3f/ %3f ), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_pos[0] * R2D, PongBotQ.actual_pos[1] * R2D, PongBotQ.actual_pos[2] * R2D, PongBotQ.actual_pos[3] * R2D, PongBotQ.actual_pos[4] * R2D, PongBotQ.actual_pos[5] * R2D, PongBotQ.actual_pos[6] * R2D, PongBotQ.actual_pos[7] * R2D, PongBotQ.actual_pos[8] * R2D, PongBotQ.actual_pos[9] * R2D, PongBotQ.actual_pos[10] * R2D, PongBotQ.actual_pos[11] * R2D);
-                //                rt_printf("actual_joint_vel(rad/s) = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_vel[0], PongBotQ.actual_vel[1], PongBotQ.actual_vel[2], PongBotQ.actual_vel[3], PongBotQ.actual_vel[4], PongBotQ.actual_vel[5], PongBotQ.actual_vel[6], PongBotQ.actual_vel[7], PongBotQ.actual_vel[8], PongBotQ.actual_vel[9], PongBotQ.actual_vel[10], PongBotQ.actual_vel[11]);
+                rt_printf("actual_q(degree) = ( %3f / %3f/ %3f ), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_pos[0] * R2D, PongBotQ.actual_pos[1] * R2D, PongBotQ.actual_pos[2] * R2D, PongBotQ.actual_pos[3] * R2D, PongBotQ.actual_pos[4] * R2D, PongBotQ.actual_pos[5] * R2D, PongBotQ.actual_pos[6] * R2D, PongBotQ.actual_pos[7] * R2D, PongBotQ.actual_pos[8] * R2D, PongBotQ.actual_pos[9] * R2D, PongBotQ.actual_pos[10] * R2D, PongBotQ.actual_pos[11] * R2D);
+                rt_printf("actual_joint_vel(rad/s) = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_vel[0], PongBotQ.actual_vel[1], PongBotQ.actual_vel[2], PongBotQ.actual_vel[3], PongBotQ.actual_vel[4], PongBotQ.actual_vel[5], PongBotQ.actual_vel[6], PongBotQ.actual_vel[7], PongBotQ.actual_vel[8], PongBotQ.actual_vel[9], PongBotQ.actual_vel[10], PongBotQ.actual_vel[11]);
                 //                rt_printf("=============================[Kinematics]=================================\n");
                 //rt_printf("actual_EP_pos_local = (%3f / %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f), (%3f/ %3f/ %3f) \n", PongBotQ.actual_EP_local[0], PongBotQ.actual_EP_local[1], PongBotQ.actual_EP_local[2], PongBotQ.actual_EP_local[3], PongBotQ.actual_EP_local[4], PongBotQ.actual_EP_local[5], PongBotQ.actual_EP_local[6], PongBotQ.actual_EP_local[7], PongBotQ.actual_EP_local[8], PongBotQ.actual_EP_local[9], PongBotQ.actual_EP_local[10], PongBotQ.actual_EP_local[11]);
                 //                rt_printf("--> com_pos= ( %3f / %3f/ %3f ) \n", PongBotQ.com_pos(0), PongBotQ.com_pos(1), PongBotQ.com_pos(2));
@@ -1415,13 +1415,13 @@ bool ecat_init(void) {
             printf("DC capable : %d\n", ec_configdc());
 #endif
 
-            //slaveinfo(ecat_ifname);
+            slaveinfo(ecat_ifname);
 
             oloop = ec_slave[0].Obytes;
             if ((oloop == 0) && (ec_slave[0].Obits > 0)) oloop = 1;
             iloop = ec_slave[0].Ibytes;
             if ((iloop == 0) && (ec_slave[0].Ibits > 0)) iloop = 1;
-            printf("segments : %d : %d %d %d %d\n", ec_group[0].nsegments, ec_group[0].IOsegment[0], ec_group[0].IOsegment[1], ec_group[0].IOsegment[2], ec_group[0].IOsegment[3]);
+            //printf("segments : %d : %d %d %d %d\n", ec_group[0].nsegments, ec_group[0].IOsegment[0], ec_group[0].IOsegment[1], ec_group[0].IOsegment[2], ec_group[0].IOsegment[3]);
             printf("Request operational state for all slaves\n");
             expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
             printf("Calculated workcounter %d\n", expectedWKC);
