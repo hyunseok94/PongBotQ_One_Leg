@@ -66,12 +66,12 @@ typedef uint16_t UINT16;
 typedef uint8_t UINT8;
 typedef int8_t INT8;
 
-#ifndef PI
-#define PI	(3.14159265359)
-#define PI2	(6.28318530718)
-#define R2D		180/PI
-#define D2R		PI/180
-#endif
+//#ifndef PI
+//#define PI	(3.14159265359)
+//#define PI2	(6.28318530718)
+//#define R2D		180/PI
+//#define D2R		PI/180
+//#endif
 
 #ifdef __cplusplus
 extern "C"{
