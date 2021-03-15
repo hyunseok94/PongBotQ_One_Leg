@@ -43,6 +43,27 @@ INCLUDE_DIRECTORIES(
  /usr/xenomai/include/alchemy
  /usr/xenomai/lib
  /usr/xenomai/
+ src/libusb
+ /usr/share/c++-mscl/source
+ /usr/share/c++-mscl/Boost/include
+ /usr/share/c++-mscl
+ /home/rclab/linux-4.9.38/include/xenomai
+ #include/MSCL
+ #include/MSCL/source/mscl
+# /usr/share/mscl/Boost/include
+)
+
+# Add Library path
+LINK_DIRECTORIES(
+ /usr/share/c++-mscl   # mscl library path
+)
+
+# Add Library
+LINK_LIBRARIES(
+ alchemy
+ copperplate
+ usb-1.0
+ mscl
 )
 
 SET (SRC_FILES
@@ -75,7 +96,7 @@ execute_process(COMMAND /usr/xenomai/bin/xeno-config --skin=alchemy --rtdm --ldf
 #SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -lpcan -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -lalchemy -lcopperplate -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g ${XENO_CFLAGS} ${XENO_LDFLAGS} -D_GNU_SOURCE -D_REENTRANT -D__COBALT__")
 
 # To Set executable file's location to ${PROJECT_SOURCE_DIR}/bin.
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)

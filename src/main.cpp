@@ -35,7 +35,7 @@
 #include "pdo_def.h"
 #include "ecat_dc.h"
 #include "slave_info.h"
-#include "osal.h"
+//#include "osal.h"
 
 // **********Eigen library*********//
 #include "Eigen/Dense"
@@ -55,13 +55,13 @@
 #include <alchemy/sem.h>
 #include <boilerplate/trace.h>
 #include <xenomai/init.h>
-//#include <rtdm/serial.h>
+#include <rtdm/serial.h>
 
 // *********** RVIZ *************//
 #include <sensor_msgs/JointState.h>             //for rviz
 #include <geometry_msgs/WrenchStamped.h>        //for rviz
 #include <tf/transform_broadcaster.h>           //for rviz
-//#include <ignition/math/Vector3.hh>
+//#include <ignition/math/Vector3.hh>test_wrapped_device
 
 //JoyStick
 #include <sensor_msgs/Joy.h>
@@ -71,8 +71,15 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
-int fd_MIC;
 
+#include "libusb/libusb.h"
+//#include "libusb/libusb.h"
+#include "rtdm/uapi/rtdm.h"
+
+#include "mscl/mscl.h"
+
+int fd_MIC;
+#define COUNT_OF(array) (sizeof(array) / sizeof(array[0]))
 
 #define NSEC_PER_SEC 1000000000
 #define EC_TIMEOUTMON 500
@@ -105,10 +112,18 @@ char IOmap[4096];
 int oloop, iloop, wkc_count;
 int expectedWKC;
 volatile int wkc;
-unsigned int cycle_ns = 1000000; // Control Cycle 1[ms]
+unsigned int cycle_ms = 1000000; // Control Cycle 1[ms]
 int recv_fail_cnt = 0;
 
 unsigned int n_fail = 0;
+unsigned int n_success = 0;
+
+//float n_fail = 0.0;
+//float n_success = 0.0;
+
+
+int MIC_length = 34;
+unsigned char Receive_MIC_buf[34];
 
 // loop (main & thread)
 int motion_run_flag = 1;
@@ -158,9 +173,9 @@ VectorNd tmp_Incre_actual_joint_pos = VectorNd::Zero(JOINT_NUM);
 int Low_Gear[JOINT_NUM] = {50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50};
 double Low_ratedCur[JOINT_NUM] = {2.85, 2.85, 8.9, 8.9, 2.85, 2.85, 2.85, 2.85, 8.9, 8.9, 2.85, 2.85};
 double Low_Kt[JOINT_NUM] = {0.159, 0.159, 0.156, 0.156, 0.159, 0.159, 0.159, 0.159, 0.156, 0.156, 0.159, 0.159};
-int32_t Low_Resolution[JOINT_NUM] = {262144, 262144, 16384, 16384, 262144, 262144,  262144, 262144, 16384, 16384 , 262144, 262144};
+int32_t Low_Resolution[JOINT_NUM] = {262144, 262144, 16384, 16384, 262144, 262144, 262144, 262144, 16384, 16384, 262144, 262144};
 
-
+int verbose = 0;
 // ============================================= //
 
 //// Elmo setting
@@ -168,10 +183,10 @@ UINT16 maxTorque = 3500;
 INT16 Low_TargetTor[JOINT_NUM] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 //Save
 //#define SAVE_LENGTH 13    //The number of data
-#define SAVE_LENGTH 20    //The number of data
+#define SAVE_LENGTH 6    //The number of data
 //#define SAVE_COUNT 3600000 //Save Time = 3600000[ms]=3600[s]
 //#define SAVE_COUNT 600000 //Save Time = 3600000[ms]=3600[s]
-#define SAVE_COUNT 10000 //Save Time = 300000[ms]=300[s]
+#define SAVE_COUNT 600000 //Save Time = 300000[ms]=300[s]
 unsigned int save_cnt = 0;
 double save_array[SAVE_COUNT][SAVE_LENGTH];
 //double save_array[SAVE_COUNT][SAVE_LENGTH];
@@ -212,9 +227,9 @@ double check_imu_time = 0.0;
 double imu_time = 0.0;
 double QP_time = 0.0;
 double check_QP_time = 0.0;
-double check_nmpc_time = 0;
+double check_nmpc_time = 0.0;
 
-double m_time = 0;
+double m_time = 0.0;
 
 //RBDL
 int version_test;
@@ -228,6 +243,78 @@ ros::Publisher P_joint_states;
 sensor_msgs::JointState m_joint_states;
 geometry_msgs::TransformStamped odom_trans;
 
+int read_num = 0;
+int IMU_initialize();
+int fd_IMU;
+int imu_real_time = 0;
+double checksum_percent = 0.0;
+//unsigned charSENSOR_ENABLED = DISABLE;
+struct termios oldtio, newtio;
+int IMU_index = 0;
+
+#define DATA_SIZE 34
+#define CHECKSUM_MSB_INDEX 32
+#define CHECKSUM_LSB_INDEX 33
+
+#define FIELD1_START_INDEX 6
+#define FIELD2_START_INDEX 20
+uint8_t tmp_buff[1];
+uint8_t IMU_SEND_DATA[20];
+
+uint8_t IMU_buff[DATA_SIZE];
+uint8_t pre_IMU_buff[DATA_SIZE];
+
+ssize_t buff_readnum;
+ssize_t buff_totalnum;
+ssize_t print_buff_totalnum;
+bool buff_totalnum_flag = false;
+
+uint8_t IMU_checksum_msb;
+uint8_t IMU_checksum_lsb;
+
+bool IMU_DATASAVE = false;
+bool IMU_checksum_flag = false;
+
+uint32_t roll_f, pitch_f, yaw_f = 0;
+uint32_t gyro_x_f, gyro_y_f, gyro_z_f = 0;
+float roll_radian, roll_degree, pitch_radian, pitch_degree, yaw_degree, yaw_radian = 0;
+float gyro_x_radian, gyro_x_degree, gyro_y_radian, gyro_y_degree, gyro_z_degree, gyro_z_radian = 0;
+
+void add_queue(unsigned char value);
+int de_queue();
+int IsEmpty(void);
+int IsFull(void);
+void ReadIMUSensorData(void);
+
+uint32_t roll_MIC_f = 0;
+uint32_t pitch_MIC_f = 0;
+uint32_t yaw_MIC_f = 0;
+
+uint32_t Gyro_X_MIC_f = 0;
+uint32_t Gyro_Y_MIC_f = 0;
+uint32_t Gyro_Z_MIC_f = 0;
+
+uint32_t Acc_X_MIC_f = 0;
+uint32_t Acc_Y_MIC_f = 0;
+uint32_t Acc_Z_MIC_f = 0;
+
+float roll_MIC = 0, pitch_MIC = 0, yaw_MIC = 0;
+float Gyro_X_MIC = 0, Gyro_Y_MIC = 0, Gyro_Z_MIC = 0;
+float Acc_X_MIC = 0, Acc_Y_MIC = 0, Acc_Z_MIC = 0;
+
+const double PI_IMU = 3.1415927f;
+
+int mic_flag1 = 0;
+int mic_flag2 = 0;
+int data_start = 0;
+uint8_t checksum_byte1 = 0, checksum_byte2 = 0;
+
+//    unsigned char Send_MIC_buf[13];
+//    unsigned char Read_MIC_buf[30];
+
+unsigned char tmp_Receive_MIC_buf[6];
+unsigned char tmp2_Receive_MIC_buf[14];
+unsigned char tmp_Receive_MIC_buf2[1];
 
 //**********************************************//
 //*************** 2. Functions ****************//
@@ -260,9 +347,39 @@ INT16 Tor2Cur(double OutputTorque, double _Kt, int _Gear, double _ratedCur);
 void JoystickCallback(const sensor_msgs::Joy& msg);
 void ROSMsgPublish(void);
 
+
+#define TRANSFER_SIZE 34
+
+//////////////////////////////////////////////////////////////
+#define USB_VENDOR_ID     0x0483      /* USB vendor ID used by the device
+                                         * 0x0483 is STMs ID
+                                         */
+#define USB_PRODUCT_ID     0x5740      /* USB product ID used by the device */
+#define USB_ENDPOINT_IN     (LIBUSB_ENDPOINT_IN  | 1)   /* endpoint address */
+#define USB_ENDPOINT_OUT (LIBUSB_ENDPOINT_OUT | 1)   /* endpoint address */
+#define USB_TIMEOUT        5        /* Connection timeout (in ms) */
+
+static libusb_context *ctx = NULL;
+static libusb_device_handle *handle;
+
+static uint8_t receiveBuf[34];
+uint8_t transferBuf[34];
+uint16_t counter = 0;
+
+//====IMU Data====//
+//VectorNd Data_Save = VectorNd::Zero(6);
+//const string COM_PORT = "/dev/ttyACM0";
+//mscl::Connection connection = mscl::Connection::Serial(COM_PORT, 921600);
+//mscl::Connection connection = mscl::Connection::Serial(COM_PORT, 230400);
+
+//create an InertialNode with the connection
+//mscl::InertialNode node(connection);
+
+//mscl::MipDataPoints data;
+//get all the data packets from the node, with a timeout of 500 milliseconds
+//mscl::MipDataPackets packets;
+
 int main(int argc, char* argv[]) {
-//    rtser_config_t ABC;
-//    ABC.baud_rate = 115200;
 
     printf(" ROS Setting ...\n");
     //ros::init(argc, argv, "elmo_pkgs");
@@ -296,25 +413,62 @@ int main(int argc, char* argv[]) {
     Load();
     printf("\n");
 
+    //    try {
+    //        //rtdm_clock_read();
+    //        node.setToIdle();
+    //
+    //        //build up the channels to set
+    //        //mscl::InertialChannels sensorChs;
+    //        mscl::MipChannels sensorChs;
+    //
+    ////        sensorChs.push_back(mscl::MipChannel(mscl::MipTypes::CH_FIELD_SENSOR_SCALED_ACCEL_VEC, mscl::SampleRate::Hertz(1000)));
+    ////        sensorChs.push_back(mscl::MipChannel(mscl::MipTypes::CH_FIELD_SENSOR_SCALED_GYRO_VEC, mscl::SampleRate::Hertz(1000)));
+    //        sensorChs.push_back(mscl::MipChannel(mscl::MipTypes::CH_FIELD_SENSOR_SCALED_ACCEL_VEC, mscl::SampleRate::Hertz(200)));
+    //        sensorChs.push_back(mscl::MipChannel(mscl::MipTypes::CH_FIELD_SENSOR_SCALED_GYRO_VEC, mscl::SampleRate::Hertz(200)));
+    //
+    //        //set the active channels for the Sensor category on the Node
+    //        node.setActiveChannelFields(mscl::MipTypes::CLASS_AHRS_IMU, sensorChs);
+    //
+    //        //start sampling on the Sensor category of the Node
+    //        node.enableDataStream(mscl::MipTypes::CLASS_AHRS_IMU);
+    //        imu_run_flag = 1;
+    //        
+    //        while (imu_run_flag) {
+    //            packets = node.getDataPackets(5);
+    //
+    //            for (mscl::MipDataPacket packet : packets) {
+    //                data = packet.data();
+    //                for (int i = 0; i < 6; i++) {
+    //                    Data_Save[i] = data[i].as_double();
+    //                    //rt_printf("%f /", Data_Save[i] * R2D);
+    //                }
+    //            }
+    //            DataSave();
+    //        }
+    //    } catch (mscl::Error& e) {
+    //        cout << "Error: " << e.what() << endl;
+    //    }
+
+
     // Thread Setting Start
     printf("Create Thread ...\n");
     for (int i = 1; i < 4; ++i) {
         printf("%d...\n", i);
         sleep(1);
     }
-    
-    rt_task_create(&PongBot_task, "Motion_task", 0, 99, 0);
-    rt_task_create(&Print_task, "Print_task", 0, 60, 0);
-    rt_task_create(&NMPC_task, "NMPC_task", 0, 80, 0);
-    //rt_task_create(&IMU_task, "Imu_task", 0, 95, 0);
+
+    //    rt_task_create(&PongBot_task, "Motion_task", 0, 99, 0);
+    //    rt_task_create(&Print_task, "Print_task", 0, 60, 0);
+    //    rt_task_create(&NMPC_task, "NMPC_task", 0, 80, 0);
+    rt_task_create(&IMU_task, "Imu_task", 0, 95, 0);
     //rt_task_create(&IMU_task, "Imu_task", 0, 99, 0);
     //rt_task_create(&QP_task, "QP_task", 0, 90, 0);
 
-    rt_task_start(&PongBot_task, &motion_run, NULL);
-    rt_task_start(&Print_task, &print_run, NULL);
-    rt_task_start(&NMPC_task, &nmpc_run, NULL);
-    //rt_task_start(&IMU_task, &imu_run, NULL);
-    //rt_task_start(&QP_task, &QP_run, NULL);
+    //    rt_task_start(&PongBot_task, &motion_run, NULL);
+    //    rt_task_start(&Print_task, &print_run, NULL);
+    //    rt_task_start(&NMPC_task, &nmpc_run, NULL);
+    rt_task_start(&IMU_task, &imu_run, NULL);
+    //    //rt_task_start(&QP_task, &QP_run, NULL);
     printf("\n");
 
     // Thread Setting End
@@ -322,7 +476,6 @@ int main(int argc, char* argv[]) {
     while (ros::ok()) {
 
         ROSMsgPublish();
-
         ros::spinOnce();
         loop_rate.sleep();
     }
@@ -335,16 +488,14 @@ void motion_run(void* arg) {
         motion_run_flag = 0;
     }
     rt_task_sleep(1e6);
-    
-    ec_send_processdata();
-    rt_task_set_periodic(NULL, TM_NOW, cycle_ns);
 
-    
+    ec_send_processdata();
+    rt_task_set_periodic(NULL, TM_NOW, cycle_ms);
+
+
     cout << "!!!!!!!!!!!!!!!!!!!! motion_run_flag = " << motion_run_flag << endl;
     while (motion_run_flag) {
- 
-        
-        
+
         previous_motion_time = now_motion_time;
         check_previous_motion_time = rt_timer_read();
 
@@ -390,15 +541,15 @@ void motion_run(void* arg) {
                     PongBot.base.des_vel << 0, 0, 0;
                     PongBot.base.des_Euler_Ang << 0, 0, 0;
                     PongBot.base.des_Ang_Vel << 0, 0, 0;
-                    
-//                    nmpc_run_flag = true;
-                    
+
+                    //                    nmpc_run_flag = true;
+
                     PongBot.CommandFlag = GOTO_WALK_READY_POS;
                     PongBot.ControlMode = CTRLMODE_NONE;
 
                     break;
 
-               
+
 
                 case CTRLMODE_PRONK_JUMP:
                     //cout << "============= [CTRLMODE_PRONK_JUMP] ==========" << endl;
@@ -449,24 +600,24 @@ void motion_run(void* arg) {
                     PongBot.StateUpdate();
                     PongBot.WalkReady_Pos_Traj();
                     PongBot.ComputeTorqueControl();
-                    
+
                     DataSave();
-                    
+
                     break;
 
                 case PRONK_JUMP:
-                    
+
                     break;
 
                 case TEST_FLAG:
-                   
+
                     break;
 
             }
             TargetTor_Gen();
         }
 
-        
+
         //============   Thread Time Checking   ============//
         now_motion_time = rt_timer_read();
         check_now_motion_time = rt_timer_read();
@@ -477,24 +628,24 @@ void motion_run(void* arg) {
         motion_time_set(1) = check_motion_time;
         motion_time_set = Max_Value_Save(motion_time_set);
         //==================================================//
-        
-        
-        
+
+
+
         PongBot.NMPC_thread_cnt++;
-        
+
         rt_task_wait_period(NULL);
     }
-    
-    
-    for (int i = 0; i < JOINT_NUM; ++i) {
-        ELMO_drive_pt[i].ptOutParam->ControlWord = 0; //Servo OFF (Disable voltage, transition#9)
-    }
+
+
+    //    for (int i = 0; i < JOINT_NUM; ++i) {
+    //        ELMO_drive_pt[i].ptOutParam->ControlWord = 0; //Servo OFF (Disable voltage, transition#9)
+    //    }
     ec_send_processdata();
     wkc = ec_receive_processdata(EC_TIMEOUTRET);
 
-    rt_task_sleep(cycle_ns);
+    rt_task_sleep(cycle_ms);
 
-    //rt_printf("End simple test, close socket\n");
+    rt_printf("End simple test, close socket\n");
     /* stop SOEM, close socket */
     printf("Request safe operational state for all slaves\n");
     ec_slave[0].state = EC_STATE_SAFE_OP;
@@ -515,7 +666,7 @@ void motion_run(void* arg) {
 void print_run(void* arg) {
 
     //rt_task_set_periodic(NULL, TM_NOW, 100000000);
-    rt_task_set_periodic(NULL, TM_NOW, cycle_ns * 100);
+    rt_task_set_periodic(NULL, TM_NOW, cycle_ms * 100);
 
     //rt_printf("Print Thread Start \n");
 
@@ -523,8 +674,8 @@ void print_run(void* arg) {
         rt_task_wait_period(NULL);
         previous_print_time = now_print_time;
         //        rt_mutex_acquire(&mutex_desc, TM_INFINITE);
-//        inOP = TRUE;     //ddddddddd
-//        sys_ready_flag = 1;
+        //        inOP = TRUE;     //ddddddddd
+        //        sys_ready_flag = 1;
         if (inOP == TRUE) {
             if (!sys_ready_flag) {
                 if (stick == 0)
@@ -533,16 +684,16 @@ void print_run(void* arg) {
                     rt_printf("%i\n", stick / 10);
                 stick++;
             } else {
-//                rt_printf("=============================[Thread Time]=================================\n");
-//                rt_printf("Thread_time : (%f [ms] / %f [ms]) / (%f [ms]) / (%f [ms] / %f [ms]) / (%f [ms] / %f [ms])\n", check_motion_time, motion_time, print_time, check_imu_time, imu_time, check_QP_time, QP_time);
-//                rt_printf("Motion Time(Max) : %f [ms] / IMU Time(Max) : %f [ms]\n", motion_time_set(0), IMU_time_set(0));
+                //                rt_printf("=============================[Thread Time]=================================\n");
+                //                rt_printf("Thread_time : (%f [ms] / %f [ms]) / (%f [ms]) / (%f [ms] / %f [ms]) / (%f [ms] / %f [ms])\n", check_motion_time, motion_time, print_time, check_imu_time, imu_time, check_QP_time, QP_time);
+                //                rt_printf("Motion Time(Max) : %f [ms] / IMU Time(Max) : %f [ms]\n", motion_time_set(0), IMU_time_set(0));
                 //                rt_printf("=============================[Elmo Status]=================================\n");
-               //rt_printf("Status word = (0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X) \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord, ELMO_drive_pt[5].ptInParam->StatusWord, ELMO_drive_pt[4].ptInParam->StatusWord, ELMO_drive_pt[3].ptInParam->StatusWord, ELMO_drive_pt[6].ptInParam->StatusWord, ELMO_drive_pt[7].ptInParam->StatusWord, ELMO_drive_pt[8].ptInParam->StatusWord, ELMO_drive_pt[11].ptInParam->StatusWord, ELMO_drive_pt[10].ptInParam->StatusWord, ELMO_drive_pt[9].ptInParam->StatusWord);
+                //rt_printf("Status word = (0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X),(0x%X / 0x%X / 0x%X) \n", ELMO_drive_pt[0].ptInParam->StatusWord, ELMO_drive_pt[1].ptInParam->StatusWord, ELMO_drive_pt[2].ptInParam->StatusWord, ELMO_drive_pt[5].ptInParam->StatusWord, ELMO_drive_pt[4].ptInParam->StatusWord, ELMO_drive_pt[3].ptInParam->StatusWord, ELMO_drive_pt[6].ptInParam->StatusWord, ELMO_drive_pt[7].ptInParam->StatusWord, ELMO_drive_pt[8].ptInParam->StatusWord, ELMO_drive_pt[11].ptInParam->StatusWord, ELMO_drive_pt[10].ptInParam->StatusWord, ELMO_drive_pt[9].ptInParam->StatusWord);
                 //rt_printf("Status word = (0x%X)", ELMO_drive_pt[0].ptInParam->StatusWord);
                 //rt_printf("Actual Torque = (%d / %d / %d),(%d / %d / %d),(%d / %d / %d),(%d / %d / %d)\n", ELMO_drive_pt[0].ptInParam->TorqueActualValue, ELMO_drive_pt[1].ptInParam->TorqueActualValue, ELMO_drive_pt[2].ptInParam->TorqueActualValue, ELMO_drive_pt[5].ptInParam->TorqueActualValue, ELMO_drive_pt[4].ptInParam->TorqueActualValue, ELMO_drive_pt[3].ptInParam->TorqueActualValue, ELMO_drive_pt[6].ptInParam->TorqueActualValue, ELMO_drive_pt[7].ptInParam->TorqueActualValue, ELMO_drive_pt[8].ptInParam->TorqueActualValue, ELMO_drive_pt[11].ptInParam->TorqueActualValue, ELMO_drive_pt[10].ptInParam->TorqueActualValue, ELMO_drive_pt[9].ptInParam->TorqueActualValue);
-//                rt_printf("=============================[Sensor]=================================\n");
+                //                rt_printf("=============================[Sensor]=================================\n");
                 //                ////
-//                rt_printf("----------------------------------------------------\n");
+                //                rt_printf("----------------------------------------------------\n");
             }
         }
         // rt_mutex_release(&mutex_desc);
@@ -554,71 +705,106 @@ void print_run(void* arg) {
 void nmpc_run(void* arg) {
 
     //rt_task_set_periodic(NULL, TM_NOW, 100000000);
-//    rt_task_set_periodic(NULL, TM_NOW, cycle_ns * PongBot.Ns);
-    
-    
-    
-    rt_task_set_periodic(NULL, TM_NOW, cycle_ns * 100);
+    //    rt_task_set_periodic(NULL, TM_NOW, cycle_ns * PongBot.Ns);
 
-//    cout << "nmpc_run_flag = " << nmpc_run_flag << endl;
+
+
+    rt_task_set_periodic(NULL, TM_NOW, cycle_ms * 100);
+
+    //    cout << "nmpc_run_flag = " << nmpc_run_flag << endl;
     //rt_printf("Print Thread Start \n");
 
     while (1) {
-        
-//        cout << "nmpc run" << endl;
+
+        //        cout << "nmpc run" << endl;
 
         check_previous_nmpc_time = rt_timer_read();
         previous_nmpc_time = now_nmpc_time;
-        
-        if(PongBot.nmpc_run_flag == true){
+
+        if (PongBot.nmpc_run_flag == true) {
 
             PongBot.NMPC_Process();
 
             PongBot.NMPC_thread_cnt = 0;
         }
-//        //============   Thread Time Checking   ============//
-//        now_motion_time = rt_timer_read();
-//        check_now_motion_time = rt_timer_read();
-//
-//        check_motion_time = (double) (check_now_motion_time - check_previous_motion_time) / 1000000;
-//        motion_time = (double) (now_motion_time - previous_motion_time) / 1000000;
-//
-//        motion_time_set(1) = check_motion_time;
-//        motion_time_set = Max_Value_Save(motion_time_set);
-//        //==================================================//
-        
-        
-        
+        //        //============   Thread Time Checking   ============//
+        //        now_motion_time = rt_timer_read();
+        //        check_now_motion_time = rt_timer_read();
+        //
+        //        check_motion_time = (double) (check_now_motion_time - check_previous_motion_time) / 1000000;
+        //        motion_time = (double) (now_motion_time - previous_motion_time) / 1000000;
+        //
+        //        motion_time_set(1) = check_motion_time;
+        //        motion_time_set = Max_Value_Save(motion_time_set);
+        //        //==================================================//
+
+
+
         now_nmpc_time = rt_timer_read();
         check_now_nmpc_time = now_nmpc_time;
-        
+
         check_nmpc_time = (double) (check_now_nmpc_time - check_previous_nmpc_time) / 1000000;
         nmpc_time = (double) (now_nmpc_time - previous_nmpc_time) / 1000000;
-        
-//        cout << "nmpc_time = " << nmpc_time << endl;
-        
+
+        //        cout << "nmpc_time = " << nmpc_time << endl;
+
         rt_task_wait_period(NULL);
     }
+}
+
+uint16 calculate_checksum(void) {
+    uint8_t checksum_byte1 = 0;
+    uint8_t checksum_byte2 = 0;
+    uint16_t checksum = 0;
+
+    for (int i = 0; i < DATA_SIZE - 2; i++) {
+        checksum_byte1 = (checksum_byte1 + IMU_buff[i]);
+        checksum_byte2 = (checksum_byte2 + checksum_byte1);
+    }
+
+    checksum = (checksum_byte1 << 8) + (checksum_byte2);
+
+    IMU_checksum_msb = checksum_byte1;
+    IMU_checksum_lsb = checksum_byte2;
+
+
+    //        rt_printf("checksum_byte1 : %x \n", checksum_byte1);
+    //        rt_printf("checksum_byte2 : %x \n", checksum_byte2);
+    //        rt_printf("checksum : %x \n", checksum);
+
+
+    return checksum;
 }
 
 void signal_handler(int sig) {
 
     printf("Program END...\n");
 
-//    cout << "[1]" << endl;
+    //    cout << "[1]" << endl;
     rt_task_delete(&IMU_task);
     close(fd_MIC);
 
-//    cout << "[2]" << endl;
+    //    cout << "[2]" << endl;
     rt_task_delete(&PongBot_task);
 
-//    cout << "[3]" << endl;
+    //    cout << "[3]" << endl;
     rt_task_delete(&Print_task);
 
-//    cout << "[4]" << endl;
+    //    cout << "[4]" << endl;
     rt_task_delete(&QP_task);
-    
+
     rt_task_delete(&NMPC_task);
+
+    //    printf("\nInterrupt signal received\n");
+    //    if (handle) {
+    //        libusb_release_interface(handle, 0);
+    //        printf("\nInterrupt signal received1\n");
+    //        libusb_close(handle);
+    //        printf("\nInterrupt signal received2\n");
+    //    }
+    //    printf("\nInterrupt signal received3\n");
+    //    libusb_exit(NULL);
+    //    printf("\nInterrupt signal received4\n");
 
     FileSave();
 
@@ -728,7 +914,7 @@ void Load(void) {
     Addons::URDFReadFromFile("/home/rclab/catkin_ws/src/RcLab-PongBot_V1/model/PONGBOT_Q_V6/urdf/PONGBOT_Q_V6.urdf", PB_model, true, false);
     PongBot.setRobotModel(PB_model);
 
-    //IMU_COM_Setting();
+    IMU_COM_Setting();
 
     PongBot.ControlMode = CTRLMODE_NONE; //=0
     //PongBot.CommandFlag = TORQUE_OFF;
@@ -761,7 +947,7 @@ void TargetTor_Gen(void) {
 
     Low_TargetTor[11] = PongBot.joint->torque[9]; //HR joint
     Low_TargetTor[10] = PongBot.joint->torque[10]; //HP joint
-    Low_TargetTor[9]  = PongBot.joint->torque[11] * 1.5; //Knee joint
+    Low_TargetTor[9] = PongBot.joint->torque[11] * 1.5; //Knee joint
     //****************************************************************//
 
     for (int i = 0; i < JOINT_NUM; i++) {
@@ -778,12 +964,12 @@ void TargetTor_Gen(void) {
     for (int i = 0; i < JOINT_NUM; i++) {
         ELMO_drive_pt[i].ptOutParam->TargetTorque = Tor2Cur(Low_TargetTor[i], Low_Kt[i], Low_Gear[i], Low_ratedCur[i]);
     }
-    
-//    cout<<ELMO_drive_pt[5].ptInParam->PositionActualValue<<endl;
-//    cout <<"TorqueActualValue = "<< ELMO_drive_pt[5].ptInParam->TorqueActualValue<<endl;
-//    cout << Low_TargetTor[5] << "/" << Low_TargetTor[4] << "/" << Low_TargetTor[3] << endl;
-//    cout << ELMO_drive_pt[5].ptOutParam->TargetTorque << "/" << ELMO_drive_pt[4].ptOutParam->TargetTorque << "/" << ELMO_drive_pt[3].ptOutParam->TargetTorque << endl;
-//    cout << "-------" << endl;
+
+    //    cout<<ELMO_drive_pt[5].ptInParam->PositionActualValue<<endl;
+    //    cout <<"TorqueActualValue = "<< ELMO_drive_pt[5].ptInParam->TorqueActualValue<<endl;
+    //    cout << Low_TargetTor[5] << "/" << Low_TargetTor[4] << "/" << Low_TargetTor[3] << endl;
+    //    cout << ELMO_drive_pt[5].ptOutParam->TargetTorque << "/" << ELMO_drive_pt[4].ptOutParam->TargetTorque << "/" << ELMO_drive_pt[3].ptOutParam->TargetTorque << endl;
+    //    cout << "-------" << endl;
 }
 
 void JoystickCallback(const sensor_msgs::Joy& msg) {
@@ -800,65 +986,70 @@ void JoystickCallback(const sensor_msgs::Joy& msg) {
             printf("======================== [Walk Ready] ==========================\n");
             PongBot.ControlMode = CTRLMODE_WALK_READY;
         }
-    } 
-//    else if ((int) msg.buttons[2] == 1) {
-//        printf("======================== [Move Stop] ==========================\n");
-//        PongBot.move_stop_flag = true;
-//        if (PongBot.pre_sub_ctrl_flag_HS == true) {
-//            PongBot.move_stop_flag = false;
-//        }
-//    } else if ((int) msg.buttons[12] == 1) {
-//        printf("======================== [HS's Walk Mode] ==========================\n");
-//        if (PongBot.moving_done_flag == true) {
-//            PongBot.ControlMode = CTRLMODE_SLOW_WALK_HS;
-//            PongBot.move_stop_flag = false;
-//        }
-//    }
+    }
+    //    else if ((int) msg.buttons[2] == 1) {
+    //        printf("======================== [Move Stop] ==========================\n");
+    //        PongBot.move_stop_flag = true;
+    //        if (PongBot.pre_sub_ctrl_flag_HS == true) {
+    //            PongBot.move_stop_flag = false;
+    //        }
+    //    } else if ((int) msg.buttons[12] == 1) {
+    //        printf("======================== [HS's Walk Mode] ==========================\n");
+    //        if (PongBot.moving_done_flag == true) {
+    //            PongBot.ControlMode = CTRLMODE_SLOW_WALK_HS;
+    //            PongBot.move_stop_flag = false;
+    //        }
+    //    }
 
-//    tmp_y_vel = -(double) msg.axes[0] / 32767.0 * max_y_vel;
-//    if (tmp_y_vel < 0.1 && tmp_y_vel > -0.1) {
-//        PongBot.tmp_y_moving_speed = 0;
-//    } else {
-//        PongBot.tmp_y_moving_speed = tmp_y_vel;
-//    }
-//    PongBot.tmp_x_moving_speed = -(double) msg.axes[1] / 32767.0 * max_x_vel;
-//    PongBot.tmp_base_ori(2) = -(double) msg.axes[2] / 32767.0 * max_yaw_ori;
+    //    tmp_y_vel = -(double) msg.axes[0] / 32767.0 * max_y_vel;
+    //    if (tmp_y_vel < 0.1 && tmp_y_vel > -0.1) {
+    //        PongBot.tmp_y_moving_speed = 0;
+    //    } else {
+    //        PongBot.tmp_y_moving_speed = tmp_y_vel;
+    //    }
+    //    PongBot.tmp_x_moving_speed = -(double) msg.axes[1] / 32767.0 * max_x_vel;
+    //    PongBot.tmp_base_ori(2) = -(double) msg.axes[2] / 32767.0 * max_yaw_ori;
 
-//    PongBot.speed_x_HS = -(double) msg.axes[1] / 32767.0 * 0.06;
-//    PongBot.speed_y_HS = -(double) msg.axes[0] / 32767.0 * 0.04;
-//    PongBot.speed_yaw_HS = -(double) msg.axes[2] / 32767.0 * 4.0 * (PI / 180);
+    //    PongBot.speed_x_HS = -(double) msg.axes[1] / 32767.0 * 0.06;
+    //    PongBot.speed_y_HS = -(double) msg.axes[0] / 32767.0 * 0.04;
+    //    PongBot.speed_yaw_HS = -(double) msg.axes[2] / 32767.0 * 4.0 * (PI / 180);
 }
 
 void ROSMsgPublish(void) {
-    tf::TransformBroadcaster broadcaster;
 
-    m_data.data[0] = m_time;
-    m_data.data[1] = PongBot.IMURoll;
-    m_data.data[2] = PongBot.IMUPitch;
-    m_data.data[3] = PongBot.IMUYaw;
+    //    tf::TransformBroadcaster broadcaster;
+    //    m_data.data[0] = m_time;
+    m_data.data[1] = PongBot.IMURoll*R2D;
+    //    m_data.data[2] = PongBot.IMUPitch*R2D;
+    //    m_data.data[3] = check_imu_time;
     m_data.data[4] = imu_time;
-    m_data.data[5] = check_imu_time;
-    m_data.data[6] = PongBot.RL.des_pos_global_now[0];
-    m_data.data[7] = PongBot.RL.des_pos_global_now[1];
-    m_data.data[8] = PongBot.RL.des_pos_global_now[2];
-    
+    m_data.data[5] = PongBot.IMURoll_dot*R2D;
+    //    m_data.data[6] = mic_flag2;
+    //    m_data.data[7] = mic_flag2;
+    m_data.data[8] = (float) n_success / (n_success + n_fail);
+
+    //    m_data.data[6] = PongBot.RL.des_pos_global_now[0];
+    //    m_data.data[7] = PongBot.RL.des_pos_global_now[1];
+    //    m_data.data[8] = PongBot.RL.des_pos_global_now[2];
+
     P_data.publish(m_data);
 
 }
 
 void DataSave(void) {
-    
+
     m_time = m_time + PongBot.dt;
-    
-    save_array[save_cnt][0] = m_time;
-    save_array[save_cnt][1] = check_motion_time;
-    save_array[save_cnt][2] = motion_time;
-    save_array[save_cnt][3] = check_nmpc_time;
-    save_array[save_cnt][4] = nmpc_time;
-    save_array[save_cnt][5] = PongBot.RL.des_pos_global_now[0];
-    save_array[save_cnt][6] = PongBot.RL.des_pos_global_now[1];
-    save_array[save_cnt][7] = PongBot.RL.des_pos_global_now[2];
-    
+
+    save_array[save_cnt][0] = PongBot.IMURoll*R2D;
+    //    save_array[save_cnt][1] = PongBot.IMUPitch*R2D;
+    save_array[save_cnt][1] = PongBot.IMURoll_dot*R2D;
+    //    save_array[save_cnt][3] = PongBot.IMUPitch_dot*R2D;
+    save_array[save_cnt][2] = imu_real_time * 0.001;
+    save_array[save_cnt][3] = m_time;
+    save_array[save_cnt][4] = mic_flag2;
+    save_array[save_cnt][5] = checksum_percent;
+
+    //save_array[save_cnt][8] = mic_flag2;
     //    save_array[save_cnt][2] = PongBot.actual_joint_pos_HS[0] * R2D;
     //    save_array[save_cnt][3] = PongBot.actual_joint_pos_HS[1] * R2D;
     //    save_array[save_cnt][4] = PongBot.actual_joint_pos_HS[2] * R2D;
@@ -891,32 +1082,31 @@ void FileSave(void) {
     fp = fopen("Data.txt", "w");
 
     for (int j = 0; j < SAVE_COUNT; ++j) {
-        for (int i = 0; i < SAVE_LENGTH-1; ++i) {
+        for (int i = 0; i < SAVE_LENGTH - 1; ++i) {
             fprintf(fp, "%f \t", (double) save_array[j][i]);
             //            fprintf(fp, "%c\t", save_array[j][i]);
         }
-        fprintf(fp, "%f \n", (double) save_array[j][SAVE_LENGTH-1]);
-//        fprintf(fp, "%f\n", (double) save_array[j][SAVE_LENGTH - 1]);
+        fprintf(fp, "%f \n", (double) save_array[j][SAVE_LENGTH - 1]);
+        //        fprintf(fp, "%f\n", (double) save_array[j][SAVE_LENGTH - 1]);
         //fprintf(fp, "%c\n", save_array[j][SAVE_LENGTH - 1]);
     }
-    
+
     //		for(unsigned int i = 0; i < SAVE_LENGTH-1 ; ++i){
-//			fprintf(fp,"%f\t",save[j][i]);
-//		}
-//		fprintf(fp,"%f\n",save[j][SAVE_LENGTH-1]);
+    //			fprintf(fp,"%f\t",save[j][i]);
+    //		}
+    //		fprintf(fp,"%f\n",save[j][SAVE_LENGTH-1]);
 
     fclose(fp);
-    
+
     cout << "=========== Data Save Done ===========" << endl << endl;
 }
-
 
 bool ecat_init(void) {
 
     needlf = FALSE;
     inOP = FALSE;
 
-//    printf("Starting simple test\n");
+    //    printf("Starting simple test\n");
 
     if (ec_init(ecat_ifname)) {
 
@@ -1031,144 +1221,523 @@ bool ecat_init(void) {
     return inOP;
 }
 
+//int IMU_COM_Setting() {
+//    printf(" IMU Setting ... \n");
+//    struct termios oldtio, newtio;
+//
+//    //fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
+//    //fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY | O_NONBLOCK | O_NDELAY);
+//    fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY | O_NONBLOCK | O_NDELAY); // |O_NONBLOCK
+//    //fd_MIC = open("/dev/IMU_COM", O_RDWR | O_NOCTTY | O_NONBLOCK | O_NDELAY);
+//    //fd_MIC = open("/dev/IMU_COM", O_RDWR | O_NOCTTY);
+//
+//    //fd_MIC = open("/dev/IMU_COM", O_RDWR);
+//    // dev/ttyACM0
+//    // O_RDWF : Use write/read mode
+//    // O_NOCCTY : No Controlling tty
+//    // O_NONBLOCK :
+//    if (fd_MIC < 0) {
+//        perror("/dev/ttyACM0");
+//        exit(-1);
+//    }
+//    tcgetattr(fd_MIC, &oldtio); // get current port's setting.
+//    bzero(&newtio, sizeof (newtio)); // clear new port's setting.
+//    //memset(&newtio, 0, sizeof (newtio)); // clear new port's setting.
+//
+//    //newtio.c_cflag = B115200 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+//    //newtio.c_cflag = B230400 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+//    //newtio.c_cflag = B460800 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+//    // Control mode Setting(speed = 921600, letter size = 8bits, neglect modem line, allow to receive)
+//    //    newtio.c_cflag = B921600 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+//    newtio.c_cflag = B921600 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+//
+//    // Input mode Setting(neglect partiy error, transform CR to NL)
+//    newtio.c_iflag = IGNPAR | ICRNL; //Parity 오류가 있는 문자 무시
+//
+//    // Output mode Setting(No setting)
+//    newtio.c_oflag = 0; //출력처리 설정 0이면 아무것도 안함
+//
+//    // Local mode Setting(No setting)
+//    newtio.c_lflag = 0; //Local Mode 설정, ICANON이면 널 문자가 들어올때까지 수신(non-canonical mode)
+//
+//    //Control Characters
+//    newtio.c_cc[VINTR] = 0;
+//    newtio.c_cc[VQUIT] = 0;
+//    newtio.c_cc[VERASE] = 0;
+//    newtio.c_cc[VKILL] = 0;
+//    newtio.c_cc[VEOF] = 4;
+//    newtio.c_cc[VTIME] = 0; //time-out 값으로 사용, time-out 값은 TIME*0.1초
+//    //newtio.c_cc[VTIME] = 100; //time-out 값으로 사용, time-out 값은 TIME*0.1초
+//
+//    newtio.c_cc[VMIN] = 1; //read가 리턴되기 위한 최소한의 문자 개수
+//    //newtio.c_cc[VMIN] = 0; //read가 리턴되기 위한 최소한의 문자 개수
+//
+//    newtio.c_cc[VSWTC] = 0;
+//    newtio.c_cc[VSTART] = 0;
+//    newtio.c_cc[VSTOP] = 0;
+//    newtio.c_cc[VSUSP] = 0;
+//    newtio.c_cc[VEOL] = 0;
+//    newtio.c_cc[VREPRINT] = 0;
+//    newtio.c_cc[VDISCARD] = 0;
+//    newtio.c_cc[VWERASE] = 0;
+//    newtio.c_cc[VLNEXT] = 0;
+//    newtio.c_cc[VEOL2] = 0;
+//
+//    tcflush(fd_MIC, TCIFLUSH); //설정을 초기화
+//    tcsetattr(fd_MIC, TCSANOW, &newtio); //newtio 터미널 구조체의 속정으로 설정을 적용
+//
+//    imu_run_flag = 1;
+//
+//    return 1;
+//}
+
 int IMU_COM_Setting() {
     printf(" IMU Setting ... \n");
     struct termios oldtio, newtio;
 
-    //fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
-    fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY | O_NONBLOCK | O_NDELAY);
-    //fd_MIC = open("/dev/IMU_COM", O_RDWR | O_NOCTTY | O_NONBLOCK | O_NDELAY);
-    //fd_MIC = open("/dev/IMU_COM", O_RDWR | O_NOCTTY);
+    fd_MIC = open("/dev/ttyACM0", O_RDWR | O_NOCTTY); // |O_NONBLOCK
 
-    //fd_MIC = open("/dev/IMU_COM", O_RDWR);
-    // dev/ttyACM0
-    // O_RDWF : Use write/read mode
-    // O_NOCCTY : No Controlling tty
-    // O_NONBLOCK :
     if (fd_MIC < 0) {
         perror("/dev/ttyACM0");
         exit(-1);
     }
+
     tcgetattr(fd_MIC, &oldtio); // get current port's setting.
-    bzero(&newtio, sizeof (newtio)); // clear new port's setting.
-    //memset(&newtio, 0, sizeof (newtio)); // clear new port's setting.
 
-    //newtio.c_cflag = B115200 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
-    //newtio.c_cflag = B230400 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
-    //newtio.c_cflag = B460800 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
-    // Control mode Setting(speed = 921600, letter size = 8bits, neglect modem line, allow to receive)
-    newtio.c_cflag = B921600 | CS8 | CLOCAL | CREAD; //baud 통신 속도 | CS8 (8bit, No Parity, 1 Stop Bit)설정 | 내부통신 포트 | 읽기가능
+    cfsetospeed(&oldtio, B921600);
+    cfsetispeed(&oldtio, B921600);
 
-    // Input mode Setting(neglect partiy error, transform CR to NL)
-    newtio.c_iflag = IGNPAR | ICRNL; //Parity 오류가 있는 문자 무시
+    //set the number of stop bits to 1
+    oldtio.c_cflag &= ~CSTOPB;
 
-    // Output mode Setting(No setting)
-    newtio.c_oflag = 0; //출력처리 설정 0이면 아무것도 안함
+    //Set parity to None
+    oldtio.c_cflag &= ~PARENB;
 
-    // Local mode Setting(No setting)
-    newtio.c_lflag = 0; //Local Mode 설정, ICANON이면 널 문자가 들어올때까지 수신(non-canonical mode)
+    //set for non-canonical (raw processing, no echo, etc.)
+    oldtio.c_iflag = IGNPAR; // ignore parity check close_port(int
+    oldtio.c_oflag = 0; // raw output
+    oldtio.c_lflag = 0; // raw input
 
-    //Control Characters
-    newtio.c_cc[VINTR] = 0;
-    newtio.c_cc[VQUIT] = 0;
-    newtio.c_cc[VERASE] = 0;
-    newtio.c_cc[VKILL] = 0;
-    newtio.c_cc[VEOF] = 4;
-    newtio.c_cc[VTIME] = 0; //time-out 값으로 사용, time-out 값은 TIME*0.1초
-    //newtio.c_cc[VTIME] = 100; //time-out 값으로 사용, time-out 값은 TIME*0.1초
+    //Time-Outs -- won't work with NDELAY option in the call to open
+    //oldtio.c_cc[VMIN] = 0; // block reading until RX x characers. If x = 0, 
+    oldtio.c_cc[VMIN] = 1; // block reading until RX x characers. If x = 0, 
+    // it is non-blocking.
+    oldtio.c_cc[VTIME] = 1; // Inter-Character Timer -- i.e. timeout= x*.1 s
 
-    newtio.c_cc[VMIN] = 1; //read가 리턴되기 위한 최소한의 문자 개수
-    //newtio.c_cc[VMIN] = 0; //read가 리턴되기 위한 최소한의 문자 개수
+    //Set local mode and enable the receiver
+    oldtio.c_cflag |= (CLOCAL | CREAD);
 
-    newtio.c_cc[VSWTC] = 0;
-    newtio.c_cc[VSTART] = 0;
-    newtio.c_cc[VSTOP] = 0;
-    newtio.c_cc[VSUSP] = 0;
-    newtio.c_cc[VEOL] = 0;
-    newtio.c_cc[VREPRINT] = 0;
-    newtio.c_cc[VDISCARD] = 0;
-    newtio.c_cc[VWERASE] = 0;
-    newtio.c_cc[VLNEXT] = 0;
-    newtio.c_cc[VEOL2] = 0;
-
-    tcflush(fd_MIC, TCIFLUSH); //설정을 초기화
-    tcsetattr(fd_MIC, TCSANOW, &newtio); //newtio 터미널 구조체의 속정으로 설정을 적용
+    tcsetattr(fd_MIC, TCSANOW, &oldtio);
 
     imu_run_flag = 1;
-    //    fd_MIC=rt_dev_open("/dev/ttyACM0", O_RDWR | O_NOCTTY | O_NONBLOCK);
-    //cout << "fd_MIC =" << fd_MIC << endl;
+
     return 1;
 }
 
+double num = 0;
+
+//void imu_run(void *arg) {
+//    rt_task_set_periodic(NULL, TM_NOW, 1 * cycle_ms);
+//
+//    memset(Receive_MIC_buf, 0, MIC_length);
+//
+//    while (imu_run_flag) {
+//        
+//        imu_real_time++;
+//        
+//        rt_task_wait_period(NULL);
+//
+//        previous_imu_time = now_imu_time;
+//        check_previous_imu_time = rt_timer_read();
+//
+//        checksum_byte1 = 0, checksum_byte2 = 0;
+//        if (mic_flag1 == 0) {
+////            checksum_byte1 = 0, checksum_byte2 = 0;
+//            if (num=(double) read(fd_MIC, tmp_Receive_MIC_buf, 6) > 0) {
+//                
+//                if (tmp_Receive_MIC_buf[0] == 0x75 && tmp_Receive_MIC_buf[1] == 0x65 && tmp_Receive_MIC_buf[2] == 0x80 && tmp_Receive_MIC_buf[3] == 0x1C && tmp_Receive_MIC_buf[4] == 0x0E && tmp_Receive_MIC_buf[5] == 0x0C) {
+//                    Receive_MIC_buf[0] = tmp_Receive_MIC_buf[0];
+//                    Receive_MIC_buf[1] = tmp_Receive_MIC_buf[1];
+//                    Receive_MIC_buf[2] = tmp_Receive_MIC_buf[2];
+//                    Receive_MIC_buf[3] = tmp_Receive_MIC_buf[3];
+//                    Receive_MIC_buf[4] = tmp_Receive_MIC_buf[4];
+//                    Receive_MIC_buf[5] = tmp_Receive_MIC_buf[5];
+//                    read(fd_MIC, Receive_MIC_buf + 6, 28);
+//
+//                    if (Receive_MIC_buf[18] == 0x0E && Receive_MIC_buf[19] == 0x05) {
+//
+//                        for (int i = 0; i < MIC_length - 2; i++) {
+//                            checksum_byte1 += Receive_MIC_buf[i];
+//                            checksum_byte2 += checksum_byte1;
+//                        }
+//                        //                        for (int i = 0; i < MIC_length; i++) {
+//                        //                            //rt_printf("0x%X\n", Receive_MIC_buf[i]);
+//                        //                            //                        if (i % 34 == 33) {
+//                        //                            //                            rt_printf("aaaaaaaaaa\n");
+//                        //                            //                        }
+//                        //                        }
+//                        //rt_printf("--\n");
+//                        //                        rt_printf("0x%X / 0x%X \n", checksum_byte1, checksum_byte2);
+//                        //                        rt_printf("-------------------------\n");
+//                        if (Receive_MIC_buf[MIC_length - 2] == checksum_byte1 && Receive_MIC_buf[MIC_length - 1] == checksum_byte2) {
+//                            n_success++;
+//                            mic_flag2 = 1;
+//                            //rt_printf("mic_flag2=%d\n", mic_flag2);
+//                            //rt_printf("success_num=%d\n", n_success);
+//                            data_start = 6;
+//                            mic_flag1 = 1;
+//                        } else {
+//                            n_fail++;
+//                            mic_flag2 = 0;
+//                            rt_printf("mic_flag2=%d\n", mic_flag2);
+//                            rt_printf("fail_num=%d\n", n_fail);
+//                        }
+//                        checksum_percent = (float) n_success / (n_success + n_fail);
+//                    }
+//                }
+//            }
+//        } else if (mic_flag1 == 1) {
+//            roll_MIC_f = Receive_MIC_buf[data_start] << 24 | Receive_MIC_buf[data_start + 1] << 16 | Receive_MIC_buf[data_start + 2] << 8 | Receive_MIC_buf[data_start + 3];
+//            pitch_MIC_f = Receive_MIC_buf[data_start + 4] << 24 | Receive_MIC_buf[data_start + 5] << 16 | Receive_MIC_buf[data_start + 6] << 8 | Receive_MIC_buf[data_start + 7];
+//            yaw_MIC_f = Receive_MIC_buf[data_start + 8] << 24 | Receive_MIC_buf[data_start + 9] << 16 | Receive_MIC_buf[data_start + 10] << 8 | Receive_MIC_buf[data_start + 11];
+//            roll_MIC = *(float*) &roll_MIC_f;
+//            roll_MIC = -roll_MIC;
+//            pitch_MIC = *(float*) &pitch_MIC_f;
+//            pitch_MIC = pitch_MIC;
+//            yaw_MIC = *(float*) &yaw_MIC_f;
+//            yaw_MIC = -yaw_MIC;
+//
+//            Gyro_X_MIC_f = Receive_MIC_buf[data_start + 14] << 24 | Receive_MIC_buf[data_start + 15] << 16 | Receive_MIC_buf[data_start + 16] << 8 | Receive_MIC_buf[data_start + 17];
+//            Gyro_Y_MIC_f = Receive_MIC_buf[data_start + 18] << 24 | Receive_MIC_buf[data_start + 19] << 16 | Receive_MIC_buf[data_start + 20] << 8 | Receive_MIC_buf[data_start + 21];
+//            Gyro_Z_MIC_f = Receive_MIC_buf[data_start + 22] << 24 | Receive_MIC_buf[data_start + 23] << 16 | Receive_MIC_buf[data_start + 24] << 8 | Receive_MIC_buf[data_start + 25];
+//            Gyro_X_MIC = *(float*) &Gyro_X_MIC_f;
+//            Gyro_X_MIC = -Gyro_X_MIC;
+//            Gyro_Y_MIC = *(float*) &Gyro_Y_MIC_f;
+//            Gyro_Y_MIC = -Gyro_Y_MIC;
+//            Gyro_Z_MIC = *(float*) &Gyro_Z_MIC_f;
+//            Gyro_Z_MIC = Gyro_Z_MIC;
+//
+//            //            Acc_X_MIC_f = Receive_MIC_buf[data_start + 28] << 24 | Receive_MIC_buf[data_start + 29] << 16 | Receive_MIC_buf[data_start + 30] << 8 | Receive_MIC_buf[data_start + 31];
+//            //            Acc_Y_MIC_f = Receive_MIC_buf[data_start + 32] << 24 | Receive_MIC_buf[data_start + 33] << 16 | Receive_MIC_buf[data_start + 34] << 8 | Receive_MIC_buf[data_start + 35];
+//            //            Acc_Z_MIC_f = Receive_MIC_buf[data_start + 36] << 24 | Receive_MIC_buf[data_start + 37] << 16 | Receive_MIC_buf[data_start + 38] << 8 | Receive_MIC_buf[data_start + 39];
+//            //            Acc_X_MIC = *(float*) &Acc_X_MIC_f;
+//            //            Acc_X_MIC = Acc_X_MIC;
+//            //            Acc_Y_MIC = *(float*) &Acc_Y_MIC_f;
+//            //            Acc_Y_MIC = Acc_Y_MIC;
+//            //            Acc_Z_MIC = *(float*) &Acc_Z_MIC_f;
+//            //            Acc_Z_MIC = Acc_Z_MIC;
+//
+//            if (roll_MIC >= -180 * D2R && roll_MIC <= 0) {
+//                roll_MIC = roll_MIC + 180.0 * D2R;
+//            } else if (roll_MIC <= 180 * D2R && roll_MIC >= 0) {
+//                roll_MIC = roll_MIC - 180.0 * D2R;
+//            }
+//
+//            PongBot.IMURoll = roll_MIC;
+//            PongBot.IMUPitch = pitch_MIC;
+//            PongBot.IMUYaw = yaw_MIC;
+//            PongBot.IMURoll_dot = Gyro_X_MIC;
+//            PongBot.IMUPitch_dot = Gyro_Y_MIC;
+//            PongBot.IMUYaw_dot = Gyro_Z_MIC;
+//            //            PongBot.IMUAccX = Acc_X_MIC;
+//            //            PongBot.IMUAccY = Acc_Y_MIC;
+//            //            PongBot.IMUAccZ = Acc_Z_MIC;
+//
+//            const double max_IMU_Roll = 40 * D2R;
+//            const double max_IMU_Pitch = 40 * D2R;
+//            const double max_IMU_Roll_dot = 100 * D2R;
+//            const double max_IMU_Pitch_dot = 100 * D2R;
+//            const double max_IMU_Yaw_dot = 100 * D2R;
+//            const double max_IMU_AccX = 15.0;
+//            const double max_IMU_AccY = 15.0;
+//            const double max_IMU_AccZ = 15.0;
+//
+//            //=================== [Limits of Angle] =============================//
+//            if (PongBot.IMURoll > max_IMU_Roll) {
+//                PongBot.IMURoll = max_IMU_Roll;
+//            } else if (PongBot.IMURoll < -max_IMU_Roll) {
+//                PongBot.IMURoll = -max_IMU_Roll;
+//            }
+//            if (PongBot.IMUPitch > max_IMU_Pitch) {
+//                PongBot.IMUPitch = max_IMU_Pitch;
+//            } else if (PongBot.IMUPitch < -max_IMU_Pitch) {
+//                PongBot.IMUPitch = -max_IMU_Pitch;
+//            }
+//
+//            //================== [Limits of Angular Velocity] =============================//
+//            if (PongBot.IMURoll_dot > max_IMU_Roll_dot) {
+//                PongBot.IMURoll_dot = max_IMU_Roll_dot;
+//            } else if (PongBot.IMURoll_dot < -max_IMU_Roll_dot) {
+//                PongBot.IMURoll_dot = -max_IMU_Roll_dot;
+//            }
+//            if (PongBot.IMUPitch_dot > max_IMU_Pitch_dot) {
+//                PongBot.IMUPitch_dot = max_IMU_Pitch_dot;
+//            } else if (PongBot.IMUPitch_dot < -max_IMU_Pitch_dot) {
+//                PongBot.IMUPitch_dot = -max_IMU_Pitch_dot;
+//            }
+//            if (PongBot.IMUYaw_dot > max_IMU_Yaw_dot) {
+//                PongBot.IMUYaw_dot = max_IMU_Yaw_dot;
+//            } else if (PongBot.IMUYaw_dot < -max_IMU_Yaw_dot) {
+//                PongBot.IMUYaw_dot = -max_IMU_Yaw_dot;
+//            }
+//
+//            //================== [Limits of Linear Acceleration ] =============================//
+//            //            if (PongBot.IMUAccX > max_IMU_AccX) {
+//            //                PongBot.IMUAccX = max_IMU_AccX;
+//            //            } else if (PongBot.IMUAccX < -max_IMU_AccX) {
+//            //                PongBot.IMUAccX = -max_IMU_AccX;
+//            //            }
+//            //            if (PongBot.IMUAccY > max_IMU_AccY) {
+//            //                PongBot.IMUAccY = max_IMU_AccY;
+//            //            } else if (PongBot.IMUAccY < -max_IMU_AccY) {
+//            //                PongBot.IMUAccY = -max_IMU_AccY;
+//            //            }
+//            //            if (PongBot.IMUAccZ > max_IMU_AccZ) {
+//            //                PongBot.IMUAccZ = max_IMU_AccZ;
+//            //            } else if (PongBot.IMUAccZ < -max_IMU_AccZ) {
+//            //                PongBot.IMUAccZ = -max_IMU_AccZ;
+//            //            }
+//            //            cout << "Angle=" << PongBot.IMURoll * R2D << "/" << PongBot.IMUPitch * R2D << "/" << PongBot.IMUYaw*R2D<<endl;
+//            //            cout << "Vel=" << PongBot.IMURoll_dot << "/" << PongBot.IMUPitch_dot << "/" << PongBot.IMUYaw_dot<<endl;
+//            //            cout <<"----------------------"<<endl;
+//            //            roll_set(1) = PongBot.IMURoll;
+//            //            pitch_set(1) = PongBot.IMUPitch;
+//            //            yaw_set(1) = PongBot.IMUYaw;
+//            //            roll_set = Max_Value_Save(roll_set);
+//            //            pitch_set = Max_Value_Save(pitch_set);
+//            //            yaw_set = Max_Value_Save(yaw_set);
+//            //
+//            //            roll_vel_set(1) = PongBot.IMURoll_dot;
+//            //            pitch_vel_set(1) = PongBot.IMUPitch_dot;
+//            //            yaw_vel_set(1) = PongBot.IMUYaw_dot;
+//            //            roll_vel_set = Max_Value_Save(roll_vel_set);
+//            //            pitch_vel_set = Max_Value_Save(pitch_vel_set);
+//            //            yaw_vel_set = Max_Value_Save(yaw_vel_set);
+//
+//            //            x_acc_set(1) = PongBot.IMUAccX;
+//            //            y_acc_set(1) = PongBot.IMUAccY;
+//            //            z_acc_set(1) = PongBot.IMUAccZ;
+//            //            x_acc_set = Max_Value_Save(x_acc_set);
+//            //            y_acc_set = Max_Value_Save(y_acc_set);
+//            //            z_acc_set = Max_Value_Save(z_acc_set);
+//
+//            mic_flag1 = 0;
+//            data_start = 0;
+//
+//            memset(Receive_MIC_buf, 0, MIC_length);
+//
+//        }
+//        DataSave();
+//        previous_imu_time = now_imu_time;
+//        check_previous_imu_time = rt_timer_read();
+//
+//        now_imu_time = rt_timer_read();
+//        check_now_imu_time = rt_timer_read();
+//        //
+//        imu_time = (double) (now_imu_time - previous_imu_time) / 1000000;
+//        check_imu_time = (double) (check_now_imu_time - check_previous_imu_time) / 1000000;
+//
+//    }
+//    //tcsetattr(fd_MIC,TCSANOW,&oldtio);
+//}
+
 void imu_run(void *arg) {
-    //unsigned int MIC_length = 20;
-    unsigned int MIC_length = 20;
-    //unsigned char Receive_MIC_buf[MIC_length];
-
-//    unsigned char Send_MIC_buf[13];
-//    unsigned char Read_MIC_buf[30];
-
-    unsigned char tmp_Receive_MIC_buf[1];
-    unsigned char Receive_MIC_buf[MIC_length];
-    //unsigned char tmp_Receive_MIC_buf[5];
-    //rt_task_set_periodic(NULL, TM_NOW, 0.5*cycle_ns);
-    //    rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
-    //rt_task_set_periodic(NULL, TM_NOW, 1*cycle_ns);
-
-    //rt_task_set_periodic(NULL, TM_NOW, 2 * cycle_ns);
-    rt_task_set_periodic(NULL, TM_NOW, 1 * cycle_ns);
-    //rt_task_set_periodic(NULL, TM_NOW, 5*cycle_ns); //소
-    //rt_task_set_periodic(NULL, TM_NOW, 10*cycle_ns);
-    //rt_task_set_periodic(NULL, TM_NOW, 20*cycle_ns);
-
-    uint32_t roll_MIC_f = 0;
-    uint32_t pitch_MIC_f = 0;
-    uint32_t yaw_MIC_f = 0;
-
-    uint32_t Gyro_X_MIC_f = 0;
-    uint32_t Gyro_Y_MIC_f = 0;
-    uint32_t Gyro_Z_MIC_f = 0;
-
-    uint32_t Acc_X_MIC_f = 0;
-    uint32_t Acc_Y_MIC_f = 0;
-    uint32_t Acc_Z_MIC_f = 0;
-
-    float roll_MIC = 0, pitch_MIC = 0, yaw_MIC = 0;
-    float Gyro_X_MIC = 0, Gyro_Y_MIC = 0, Gyro_Z_MIC = 0;
-    float Acc_X_MIC = 0, Acc_Y_MIC = 0, Acc_Z_MIC = 0;
-
-    const double PI_IMU = 3.1415927f;
-
-    int mic_flag1 = 0;
-    int data_start = 0;
-
-    IMU_COM_Setting();
+    rt_task_set_periodic(NULL, TM_NOW, 1 * cycle_ms);
 
     memset(Receive_MIC_buf, 0, MIC_length);
 
     while (imu_run_flag) {
+
+        imu_real_time++;
+
         rt_task_wait_period(NULL);
-        uint8_t checksum_byte1 = 0, checksum_byte2 = 0;
 
         previous_imu_time = now_imu_time;
         check_previous_imu_time = rt_timer_read();
 
-//        while(read(fd_MIC, tmp_Receive_MIC_buf, 1)>0){
-//
-//        }
-        //cout << "fd_MIC=" << read(fd_MIC, tmp_Receive_MIC_buf, 1) << endl;
-        //        while ((double) read(fd_MIC, tmp_Read_MIC_buf, 1) > 0) {
-        //            if (tmp_Read_MIC_buf[0] == 0x75) {
-        //                read(fd_MIC, Read_MIC_buf + 1, 30 - 1);
-        //                Read_MIC_buf[0] = tmp_Read_MIC_buf[0];
-        //                for (int i = 0; i < 30; i++) {
-        //                    rt_printf("0x%X /", Read_MIC_buf[i]);
-        //                }
-        //                rt_printf("\n");
-        //            }
-        //        }
-        //tcflush(fd_MIC, TCIFLUSH);
-        cout <<"flush="<< tcflush(fd_MIC, TCIOFLUSH) << endl;
+//        if (num = (double) read(fd_MIC, tmp_Receive_MIC_buf2, 1) > 0) {
+        while ((double) read(fd_MIC, tmp_Receive_MIC_buf2, 1) > 0) {
+            if (tmp_Receive_MIC_buf2[0] == 0x75) {
+                Receive_MIC_buf[0] = 0x75;
+                read(fd_MIC, Receive_MIC_buf + 1, 33);
+
+                //                for (int i = 0; i < MIC_length; i++) {
+                //                    rt_printf("0x%X\n", Receive_MIC_buf[i]);
+                //                    if (i % 34 == 33) {
+                //                        rt_printf("aaaaaaaaaa\n");
+                //                    }
+                //                }
+                //                rt_printf("--\n");
+                break;
+            }
+        }
+
+        if (Receive_MIC_buf[0] == 0x75 && Receive_MIC_buf[1] == 0x65 && Receive_MIC_buf[2] == 0x80 && Receive_MIC_buf[3] == 0x1C && Receive_MIC_buf[4] == 0x0E && Receive_MIC_buf[5] == 0x0C && Receive_MIC_buf[18] == 0x0E && Receive_MIC_buf[19] == 0x05) {
+            checksum_byte1 = 0, checksum_byte2 = 0;
+//            for (int i = 0; i < MIC_length - 2; i++) {
+            for (int i = 0; i < MIC_length - 2; ++i) {
+                checksum_byte1 += Receive_MIC_buf[i];
+                checksum_byte2 += checksum_byte1;
+            }
+            if (Receive_MIC_buf[MIC_length - 2] == checksum_byte1 && Receive_MIC_buf[MIC_length - 1] == checksum_byte2) {
+                n_success++;
+                mic_flag2 = 1;
+                //rt_printf("mic_flag2=%d\n", mic_flag2);
+                //rt_printf("success_num=%d\n", n_success);
+                data_start = 6;
+                mic_flag1 = 1;
+            } else {
+                n_fail++;
+                mic_flag2 = 0;
+                rt_printf("fail_num=%d\n", n_fail);
+                for (int i = 0; i < MIC_length; i++) {
+                    rt_printf("0x%X / ", Receive_MIC_buf[i]);
+                    if (i % 34 == 33) {
+                        rt_printf("aaaaaaaaaa\n");
+                    }
+                }
+                rt_printf("--\n");
+                rt_printf("0x%X / 0x%X \n", checksum_byte1, checksum_byte2);
+                rt_printf("-------------------------\n");
+                //tcflush(fd_MIC, TCIOFLUSH);
+            }
+            checksum_percent = (float) n_success / (n_success + n_fail);
+        }
+
+        if (mic_flag1 == 1) {
+            roll_MIC_f = Receive_MIC_buf[data_start] << 24 | Receive_MIC_buf[data_start + 1] << 16 | Receive_MIC_buf[data_start + 2] << 8 | Receive_MIC_buf[data_start + 3];
+            pitch_MIC_f = Receive_MIC_buf[data_start + 4] << 24 | Receive_MIC_buf[data_start + 5] << 16 | Receive_MIC_buf[data_start + 6] << 8 | Receive_MIC_buf[data_start + 7];
+            yaw_MIC_f = Receive_MIC_buf[data_start + 8] << 24 | Receive_MIC_buf[data_start + 9] << 16 | Receive_MIC_buf[data_start + 10] << 8 | Receive_MIC_buf[data_start + 11];
+            roll_MIC = *(float*) &roll_MIC_f;
+            roll_MIC = -roll_MIC;
+            pitch_MIC = *(float*) &pitch_MIC_f;
+            pitch_MIC = pitch_MIC;
+            yaw_MIC = *(float*) &yaw_MIC_f;
+            yaw_MIC = -yaw_MIC;
+
+            Gyro_X_MIC_f = Receive_MIC_buf[data_start + 14] << 24 | Receive_MIC_buf[data_start + 15] << 16 | Receive_MIC_buf[data_start + 16] << 8 | Receive_MIC_buf[data_start + 17];
+            Gyro_Y_MIC_f = Receive_MIC_buf[data_start + 18] << 24 | Receive_MIC_buf[data_start + 19] << 16 | Receive_MIC_buf[data_start + 20] << 8 | Receive_MIC_buf[data_start + 21];
+            Gyro_Z_MIC_f = Receive_MIC_buf[data_start + 22] << 24 | Receive_MIC_buf[data_start + 23] << 16 | Receive_MIC_buf[data_start + 24] << 8 | Receive_MIC_buf[data_start + 25];
+            Gyro_X_MIC = *(float*) &Gyro_X_MIC_f;
+            Gyro_X_MIC = -Gyro_X_MIC;
+            Gyro_Y_MIC = *(float*) &Gyro_Y_MIC_f;
+            Gyro_Y_MIC = -Gyro_Y_MIC;
+            Gyro_Z_MIC = *(float*) &Gyro_Z_MIC_f;
+            Gyro_Z_MIC = Gyro_Z_MIC;
+
+            //            Acc_X_MIC_f = Receive_MIC_buf[data_start + 28] << 24 | Receive_MIC_buf[data_start + 29] << 16 | Receive_MIC_buf[data_start + 30] << 8 | Receive_MIC_buf[data_start + 31];
+            //            Acc_Y_MIC_f = Receive_MIC_buf[data_start + 32] << 24 | Receive_MIC_buf[data_start + 33] << 16 | Receive_MIC_buf[data_start + 34] << 8 | Receive_MIC_buf[data_start + 35];
+            //            Acc_Z_MIC_f = Receive_MIC_buf[data_start + 36] << 24 | Receive_MIC_buf[data_start + 37] << 16 | Receive_MIC_buf[data_start + 38] << 8 | Receive_MIC_buf[data_start + 39];
+            //            Acc_X_MIC = *(float*) &Acc_X_MIC_f;
+            //            Acc_X_MIC = Acc_X_MIC;
+            //            Acc_Y_MIC = *(float*) &Acc_Y_MIC_f;
+            //            Acc_Y_MIC = Acc_Y_MIC;
+            //            Acc_Z_MIC = *(float*) &Acc_Z_MIC_f;
+            //            Acc_Z_MIC = Acc_Z_MIC;
+
+            if (roll_MIC >= -180 * D2R && roll_MIC <= 0) {
+                roll_MIC = roll_MIC + 180.0 * D2R;
+            } else if (roll_MIC <= 180 * D2R && roll_MIC >= 0) {
+                roll_MIC = roll_MIC - 180.0 * D2R;
+            }
+
+            PongBot.IMURoll = roll_MIC;
+            PongBot.IMUPitch = pitch_MIC;
+            PongBot.IMUYaw = yaw_MIC;
+            PongBot.IMURoll_dot = Gyro_X_MIC;
+            PongBot.IMUPitch_dot = Gyro_Y_MIC;
+            PongBot.IMUYaw_dot = Gyro_Z_MIC;
+            //            PongBot.IMUAccX = Acc_X_MIC;
+            //            PongBot.IMUAccY = Acc_Y_MIC;
+            //            PongBot.IMUAccZ = Acc_Z_MIC;
+
+            const double max_IMU_Roll = 40 * D2R;
+            const double max_IMU_Pitch = 40 * D2R;
+            const double max_IMU_Roll_dot = 100 * D2R;
+            const double max_IMU_Pitch_dot = 100 * D2R;
+            const double max_IMU_Yaw_dot = 100 * D2R;
+            const double max_IMU_AccX = 15.0;
+            const double max_IMU_AccY = 15.0;
+            const double max_IMU_AccZ = 15.0;
+
+            //=================== [Limits of Angle] =============================//
+            if (PongBot.IMURoll > max_IMU_Roll) {
+                PongBot.IMURoll = max_IMU_Roll;
+            } else if (PongBot.IMURoll < -max_IMU_Roll) {
+                PongBot.IMURoll = -max_IMU_Roll;
+            }
+            if (PongBot.IMUPitch > max_IMU_Pitch) {
+                PongBot.IMUPitch = max_IMU_Pitch;
+            } else if (PongBot.IMUPitch < -max_IMU_Pitch) {
+                PongBot.IMUPitch = -max_IMU_Pitch;
+            }
+
+            //================== [Limits of Angular Velocity] =============================//
+            if (PongBot.IMURoll_dot > max_IMU_Roll_dot) {
+                PongBot.IMURoll_dot = max_IMU_Roll_dot;
+            } else if (PongBot.IMURoll_dot < -max_IMU_Roll_dot) {
+                PongBot.IMURoll_dot = -max_IMU_Roll_dot;
+            }
+            if (PongBot.IMUPitch_dot > max_IMU_Pitch_dot) {
+                PongBot.IMUPitch_dot = max_IMU_Pitch_dot;
+            } else if (PongBot.IMUPitch_dot < -max_IMU_Pitch_dot) {
+                PongBot.IMUPitch_dot = -max_IMU_Pitch_dot;
+            }
+            if (PongBot.IMUYaw_dot > max_IMU_Yaw_dot) {
+                PongBot.IMUYaw_dot = max_IMU_Yaw_dot;
+            } else if (PongBot.IMUYaw_dot < -max_IMU_Yaw_dot) {
+                PongBot.IMUYaw_dot = -max_IMU_Yaw_dot;
+            }
+
+            //================== [Limits of Linear Acceleration ] =============================//
+            //            if (PongBot.IMUAccX > max_IMU_AccX) {
+            //                PongBot.IMUAccX = max_IMU_AccX;
+            //            } else if (PongBot.IMUAccX < -max_IMU_AccX) {
+            //                PongBot.IMUAccX = -max_IMU_AccX;
+            //            }
+            //            if (PongBot.IMUAccY > max_IMU_AccY) {
+            //                PongBot.IMUAccY = max_IMU_AccY;
+            //            } else if (PongBot.IMUAccY < -max_IMU_AccY) {
+            //                PongBot.IMUAccY = -max_IMU_AccY;
+            //            }
+            //            if (PongBot.IMUAccZ > max_IMU_AccZ) {
+            //                PongBot.IMUAccZ = max_IMU_AccZ;
+            //            } else if (PongBot.IMUAccZ < -max_IMU_AccZ) {
+            //                PongBot.IMUAccZ = -max_IMU_AccZ;
+            //            }
+            //            cout << "Angle=" << PongBot.IMURoll * R2D << "/" << PongBot.IMUPitch * R2D << "/" << PongBot.IMUYaw*R2D<<endl;
+            //            cout << "Vel=" << PongBot.IMURoll_dot << "/" << PongBot.IMUPitch_dot << "/" << PongBot.IMUYaw_dot<<endl;
+            //            cout <<"----------------------"<<endl;
+            //            roll_set(1) = PongBot.IMURoll;
+            //            pitch_set(1) = PongBot.IMUPitch;
+            //            yaw_set(1) = PongBot.IMUYaw;
+            //            roll_set = Max_Value_Save(roll_set);
+            //            pitch_set = Max_Value_Save(pitch_set);
+            //            yaw_set = Max_Value_Save(yaw_set);
+            //
+            //            roll_vel_set(1) = PongBot.IMURoll_dot;
+            //            pitch_vel_set(1) = PongBot.IMUPitch_dot;
+            //            yaw_vel_set(1) = PongBot.IMUYaw_dot;
+            //            roll_vel_set = Max_Value_Save(roll_vel_set);
+            //            pitch_vel_set = Max_Value_Save(pitch_vel_set);
+            //            yaw_vel_set = Max_Value_Save(yaw_vel_set);
+
+            //            x_acc_set(1) = PongBot.IMUAccX;
+            //            y_acc_set(1) = PongBot.IMUAccY;
+            //            z_acc_set(1) = PongBot.IMUAccZ;
+            //            x_acc_set = Max_Value_Save(x_acc_set);
+            //            y_acc_set = Max_Value_Save(y_acc_set);
+            //            z_acc_set = Max_Value_Save(z_acc_set);
+
+            mic_flag1 = 0;
+            data_start = 0;
+
+            memset(Receive_MIC_buf, 0, MIC_length);
+
+        }
+        DataSave();
+        previous_imu_time = now_imu_time;
+        check_previous_imu_time = rt_timer_read();
 
         now_imu_time = rt_timer_read();
         check_now_imu_time = rt_timer_read();
@@ -1176,7 +1745,6 @@ void imu_run(void *arg) {
         imu_time = (double) (now_imu_time - previous_imu_time) / 1000000;
         check_imu_time = (double) (check_now_imu_time - check_previous_imu_time) / 1000000;
 
-        //tcflush(fd_MIC,TCIFLUSH);
     }
     //tcsetattr(fd_MIC,TCSANOW,&oldtio);
 }
@@ -1429,60 +1997,58 @@ void imu_run(void *arg) {
 //    //tcsetattr(fd_MIC,TCSANOW,&oldtio);
 //}
 
+void QP_run(void *arg) {
+    rt_task_set_periodic(NULL, TM_NOW, 2 * cycle_ms);
 
+    while (QP_run_flag) {
+        rt_task_wait_period(NULL);
+        check_previous_QP_time = rt_timer_read();
+        previous_QP_time = now_QP_time;
 
-    void QP_run(void *arg) {
-        rt_task_set_periodic(NULL, TM_NOW, 2 * cycle_ns);
-
-        while (QP_run_flag) {
-            rt_task_wait_period(NULL);
-            check_previous_QP_time = rt_timer_read();
-            previous_QP_time = now_QP_time;
-
-            if (sys_ready_flag) {
-                if (PongBot.CommandFlag != NO_ACT && PongBot.CommandFlag != TORQUE_OFF) {
-                    if (PongBot.CommandFlag == GOTO_SLOW_WALK_POS_HS) {
-                        //PongBot.Get_Opt_F_HS3();
-                    } else {
-//                        PongBot.QP_process();
-                    }
+        if (sys_ready_flag) {
+            if (PongBot.CommandFlag != NO_ACT && PongBot.CommandFlag != TORQUE_OFF) {
+                if (PongBot.CommandFlag == GOTO_SLOW_WALK_POS_HS) {
+                    //PongBot.Get_Opt_F_HS3();
+                } else {
+                    //                        PongBot.QP_process();
                 }
             }
-
-            check_now_QP_time = rt_timer_read();
-            now_QP_time = rt_timer_read();
-
-            check_QP_time = (double) (check_now_QP_time - check_previous_QP_time) / 1000000;
-            QP_time = (double) (now_QP_time - previous_QP_time) / 1000000;
-
-            QP_time_set(1) = check_QP_time;
-            QP_time_set = Max_Value_Save(QP_time_set);
         }
-    }
 
-    VectorXd Max_Value_Save(VectorXd Value_set) {
-        VectorNd new_Value_set(2);
-        if (abs(Value_set(0)) < abs(Value_set(1))) {
-            Value_set(0) = Value_set(1);
-        }
-        new_Value_set = Value_set;
-        return new_Value_set;
-    }
+        check_now_QP_time = rt_timer_read();
+        now_QP_time = rt_timer_read();
 
-    static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value) {
-        int wkc;
-        wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
-        return wkc;
-    }
+        check_QP_time = (double) (check_now_QP_time - check_previous_QP_time) / 1000000;
+        QP_time = (double) (now_QP_time - previous_QP_time) / 1000000;
 
-    static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value) {
-        int wkc;
-        wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
-        return wkc;
+        QP_time_set(1) = check_QP_time;
+        QP_time_set = Max_Value_Save(QP_time_set);
     }
+}
 
-    static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value) {
-        int wkc;
-        wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
-        return wkc;
+VectorXd Max_Value_Save(VectorXd Value_set) {
+    VectorNd new_Value_set(2);
+    if (abs(Value_set(0)) < abs(Value_set(1))) {
+        Value_set(0) = Value_set(1);
     }
+    new_Value_set = Value_set;
+    return new_Value_set;
+}
+
+static int RS3_write8(uint16 slave, uint16 index, uint8 subindex, uint8 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
+}
+
+static int RS3_write16(uint16 slave, uint16 index, uint8 subindex, uint16 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
+}
+
+static int RS3_write32(uint16 slave, uint16 index, uint8 subindex, uint32 value) {
+    int wkc;
+    wkc += ec_SDOwrite(slave, index, subindex, FALSE, sizeof (value), &value, EC_TIMEOUTRXM);
+    return wkc;
+}
